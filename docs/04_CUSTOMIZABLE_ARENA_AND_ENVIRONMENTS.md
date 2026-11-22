@@ -6,7 +6,7 @@ In **Arena Mode**, `studio_trial/` provides a full **3D Environment & Obstacle B
 
 | Pine Forest — 3D Drone Space (`18 × 18 m`) | Custom Sandbox Builder (`14 × 12 m`) |
 | :---: | :---: |
-| ![Pine Forest Drone Space](assets/04_drone_forest_arena.png) | ![Custom Arena Builder](assets/05_custom_arena_builder.png) |
+| ![Pine Forest Drone Space](assets/04_drone_forest_arena.webp) | ![Custom Arena Builder](assets/05_custom_arena_builder.webp) |
 
 ---
 

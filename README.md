@@ -12,11 +12,11 @@ Everything runs locally in the browser; nothing needs a server or an account.
 
 | 3D Electronics Workbench (2WD Rover) | Close-Up: real headers, modules and dressed wiring |
 | :---: | :---: |
-| ![2WD Rover Workbench](docs/assets/01_rover_detailed_light.png) | ![Close-Up Wiring & PCBs](docs/assets/01b_rover_closeup_wiring.png) |
+| ![2WD Rover Workbench](docs/assets/01_rover_detailed_light.webp) | ![Close-Up Wiring & PCBs](docs/assets/01b_rover_closeup_wiring.webp) |
 
 | 5" Freestyle Quadcopter Workbench | Pine Forest 3D Drone Space & FPV Camera |
 | :---: | :---: |
-| ![5-Inch Quadcopter](docs/assets/02_quad_light_bench.png) | ![Pine Forest Drone Flight](docs/assets/04_drone_forest_arena.png) |
+| ![5-Inch Quadcopter](docs/assets/02_quad_light_bench.webp) | ![Pine Forest Drone Flight](docs/assets/04_drone_forest_arena.webp) |
 
 ### Parts modelled from datasheets
 
@@ -29,7 +29,7 @@ that is drawn; leads and pads get soldered joints. Dimensions, pin orders and so
 
 ### Sketch editor
 
-<img src="docs/assets/06_sketch_editor.png" alt="Sketch editor showing a runtime fault on line 4" width="300" align="right" />
+<img src="docs/assets/06_sketch_editor.webp" alt="Sketch editor showing a runtime fault on line 4" width="300" align="right" />
 
 - **Checks as you type**: missing `;`, undeclared names (with "did you mean"), unsupported C++ and calls the
   simulator does not model are underlined on the exact line and listed under Problems (click to jump).
@@ -53,7 +53,7 @@ that is drawn; leads and pads get soldered joints. Dimensions, pin orders and so
 
 | Interactive 3D Custom Arena Builder | Autonomous 360° Zero-Collision Room Mapper |
 | :---: | :---: |
-| ![Custom Arena Builder](docs/assets/05_custom_arena_builder.png) | ![Autonomous Room Mapper & 2D SLAM](docs/assets/03_room_mapper_live_arena.png) |
+| ![Custom Arena Builder](docs/assets/05_custom_arena_builder.webp) | ![Autonomous Room Mapper & 2D SLAM](docs/assets/03_room_mapper_live_arena.webp) |
 
 ---
 

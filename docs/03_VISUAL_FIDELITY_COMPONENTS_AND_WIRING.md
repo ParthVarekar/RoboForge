@@ -9,7 +9,7 @@ To match the crisp visual standard of modern 3D CAD tools (such as BenchTwin and
 
 | Light Studio Workbench | Dark Studio Workbench |
 | :---: | :---: |
-| ![Light Studio Workbench](assets/01_rover_detailed_light.png) | ![Dark Studio Workbench](assets/01_workbench_dark.png) |
+| ![Light Studio Workbench](assets/01_rover_detailed_light.webp) | ![Dark Studio Workbench](assets/01_workbench_dark.webp) |
 
 ---
 
@@ -69,7 +69,7 @@ All 23 components are defined in `src/catalog/partsCatalog.ts` (real dimensions 
 
 ## 4. Wiring Dressed Like a Hand-Wired Board (`wireDeckRouter.ts`, `wireRope.ts`, `wireGeometry.ts`)
 
-![Close-Up of the rover's wiring](assets/01b_rover_closeup_wiring.png)
+![Close-Up of the rover's wiring](assets/01b_rover_closeup_wiring.webp)
 
 ### 4.1 How a natural wire is laid
 "Natural" wires (the default) are dressed flat on the deck, the way a tidy hand-wired board looks:
