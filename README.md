@@ -10,7 +10,7 @@ Everything runs locally in the browser; nothing needs a server or an account.
 
 ## Visual Preview
 
-| 3D Electronics Workbench (2WD Rover) | Close-Up: real headers, modules and harness |
+| 3D Electronics Workbench (2WD Rover) | Close-Up: real headers, modules and hanging wires |
 | :---: | :---: |
 | ![2WD Rover Workbench](docs/assets/01_rover_detailed_light.png) | ![Close-Up Wiring & PCBs](docs/assets/01b_rover_closeup_wiring.png) |
 
@@ -66,7 +66,7 @@ All documentation is organized in order inside [`docs/`](docs/):
 2. **[02 — System Architecture & Implementation Guide](docs/02_ARCHITECTURE_AND_IMPLEMENTATION.md)**
    - File-by-file codebase map (`31` TypeScript/React modules + `4` Vitest test suites), Zod project schema, Union-Find electrical circuit solver, C++-to-JS sketch transpiler & 60 Hz virtual ESP32 runtime, `cannon-es` physics engine, 2D occupancy SLAM grid, autonomous 360° room mapper algorithm, and the `roboforge-studio-bridge/v1` exporter.
 3. **[03 — Visual Fidelity, 3D Component Catalog & CAD Wiring System](docs/03_VISUAL_FIDELITY_COMPONENTS_AND_WIRING.md)**
-   - How all **23 procedural 3D components** are built from scratch (FR-4 PCB silkscreens, ENIG gold pads, gull-wing IC leads, 12-pole wound copper brushless stators, lathe-turned hourglass resistors, internal LED reflector anvils, Y-scored electrolytic caps), `RoomEnvironment` PBR lighting, and the **filleted orthogonal CAD cable harness router** (`LineCurve3` + `QuadraticBezierCurve3`, DuPont 2.54 mm housings, 3-wire ESC looms, and interactive `"Route by hand"` tie-points).
+   - How all **23 procedural 3D components** are built from scratch (FR-4 PCB silkscreens, ENIG gold pads, gull-wing IC leads, 12-pole wound copper brushless stators, lathe-turned hourglass resistors, internal LED reflector anvils, Y-scored electrolytic caps), `RoomEnvironment` PBR lighting, and the **hanging-wire system**: each wire is laid like a real jumper (gravity, fixed length, bend limit) and rests on the deck and the parts it crosses, with DuPont sockets, solder joints, twisted ESC looms and `"Route by hand"` cable clips.
 4. **[04 — Customizable 3D Arena & Multi-Environment Builder](docs/04_CUSTOMIZABLE_ARENA_AND_ENVIRONMENTS.md)**
    - Complete guide to the 5 one-click environment worlds (`Indoor Lab`, `Pine Forest — Drone Space`, `Warehouse Maze`, `FPV Drone Race Airfield`, `Blank Custom Sandbox`), live width/length/wall-height resizing, 2-click `Draw Wall` tool, click-to-place 3D obstacles/trees/fly-through gates/boulders, and dual 2WD Rover + 6-DOF 5" Quadcopter Drone flight physics.
 5. **[05 — Development Progress, Verification Matrix & Integration Roadmap](docs/05_PROGRESS_VERIFICATION_AND_ROADMAP.md)**

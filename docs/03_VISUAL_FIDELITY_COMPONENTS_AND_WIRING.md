@@ -67,22 +67,24 @@ All 23 components are defined in `src/catalog/partsCatalog.ts` (real dimensions 
 
 ---
 
-## 4. Top-Notch CAD Cable Harness Routing System (`wireGeometry.ts`)
+## 4. Wires That Hang Like Real Jumper Wires (`wireRope.ts`, `wireGeometry.ts`)
 
-![Close-Up CAD Cable Harness & PCBs](assets/01b_rover_closeup_wiring.png)
+![Close-Up of the rover's wiring](assets/01b_rover_closeup_wiring.png)
 
-### 4.1 Why Splines Were Replaced with Filleted Orthogonal Polylines
-Standard 3D curve splines (`CatmullRomCurve3`) overshoot sharp corners and bow outward into mid-air like springy hair. In `src/viewport/wireGeometry.ts`, we implemented **`buildFilletedCurvePath(points, bendRadius)`**:
-- Every straight run is an exact `THREE.LineCurve3` segment (zero curvature, zero sag or bowing).
-- At every interior bend `(P[i-1], P[i], P[i+1])`, the incoming and outgoing lines are trimmed back by `r = min(bendRadius, lenIn * 0.4, lenOut * 0.4)` and joined by an exact `THREE.QuadraticBezierCurve3` fillet (`r ≈ 0.24–0.30 cm`).
+### 4.1 How a wire is laid
+Each wire is solved as a light rope (`src/viewport/wireRope.ts`), then drawn as a smooth tube:
+- **Fixed ends with a straight stub.** The wire starts at the top of its DuPont socket (or the end of the heat-shrink on a soldered lead) and leaves it straight for about 6 mm, the way a crimped jumper does, before it can bend.
+- **Gravity, length and bend limits.** A chain of points of fixed length is pulled down by gravity; distance constraints keep its length, and a bending constraint keeps it from folding sharper than a 22 AWG wire can. A final settling pass with gravity off brings it back to its exact length.
+- **It rests on what is under it.** Collisions use oriented boxes taken from the parts' own meshes (rotated parts included), so a wire lies on the deck, drapes over a board or the battery, and is never tucked under something sitting on the bench. Parts under 2.5 mm (chip resistors) and thin leads are ignored, as a wire would simply lie over them.
+- **Wires stack instead of crossing through each other.** Wires already laid are obstacles for the next one.
+- **Length you could cut.** The slack comes from `src/engine/wireLength.ts`, the same rule behind the inspector's cable length and the cut list.
 
-### 4.2 Obstacle-Avoiding Bus Lanes & Stratified Elevations
-`computeHarnessPoints` evaluates 5 candidate orthogonal routes (`candA` horizontal-first, `candB` vertical-first, `candC` central chassis spine, `candD1` rear gutter, `candD2` front gutter) against the 2D bounding boxes (`ComponentFootprint[]`) of all placed PCBs and batteries:
-- Routes that cross tall components receive a high collision penalty (`hits * 32 + length`) so wires automatically detour around the `ESP32` RF shield and `2S 18650` battery pack.
-- **Parallel Ribbon Spacing:** Each wire is assigned a deterministic lane slot (`laneOffset = ((laneIndex % 5) - 2) * 0.17 cm`) and stratified tray elevation (power rails hug the lower deck while GPIO/I2C signal buses run cleanly above), forming neat parallel ribbon bundles.
-- **Cable-Tie Collars:** Long routed segments (`> 6.5 cm`) automatically receive matte-black cylindrical cable-tie collars at `35%` and `65%` span.
+### 4.2 Styles, tie points and speed
+- **Natural** (default) hangs with some slack and rests on the bench and parts; **Tight** is pulled almost straight; **Arched** is a stiff formed jumper that holds an arch. **Lay out again** changes the slack.
+- **Route by hand:** click parts or the deck to place adhesive cable clips (`waypoints: Vec3[]`); the wire passes through each clip.
+- **ESC phase leads** are drawn as a loosely twisted three-wire loom (one turn every ~3 cm) along the same solved path.
+- Solved paths are cached per wire and reused until the wire's ends, style or the parts around it change, so selecting a wire never re-solves. Dragging a part re-solves only nearby wires with a quick pass and the full pass runs on drop. Laying all 37 wires of the rover preset takes about 0.2 s once when it loads.
 
-### 4.3 Authentic 2.54 mm DuPont Connectors & 3-Conductor ESC Looms
-- **DuPont Female Housings (`addDupontHousing`):** Every pin connection renders a square matte-black 2.54 mm housing (`0.21–0.24 cm` wide, `0.36 cm` tall) with a recessed metallic silver retention crimp window on the side and a color-matched tapered strain-relief collar.
-- **3-Conductor Brushless ESC Motor Looms:** Wires connected to `esc_phase` pins automatically render as a **3-wire parallel motor phase ribbon** (colored outer phases + black center wire) cinched tightly to the carbon quadcopter arm with dual rectangular black zip-tie bands.
-- **Interactive Manual Routing (`Route by hand`):** Selecting any wire and clicking **`Route by hand`** in the Inspector lets the user click directly on the 3D workbench to place custom tie-down clips (`waypoints: Vec3[]`), updating both the 3D harness path and the millimeter cut-length in real time.
+### 4.3 DuPont sockets and solder joints
+- **DuPont female housings** on header pins: a 2.5 x 2.5 x 14 mm black sleeve over the pin with the latch window and the crimp where the wire leaves.
+- **Solder joints with heat-shrink** on component leads, solder tabs and pads, facing along the lead.

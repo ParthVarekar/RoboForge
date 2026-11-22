@@ -42,7 +42,8 @@ studio_trial/
     │   ├── parts/                       # One builder per part, grouped: controllers, modules, discretes, power, frames
     │   ├── partPreview.ts               # Offscreen renders of the 3D models for the parts list thumbnails
     │   ├── componentMeshes.ts           # Builds a part via parts/, adds pin pick targets, contact shadow, fault ring
-    │   ├── wireGeometry.ts              # Filleted orthogonal cable harness, DuPont plugs & 3-wire ESC looms
+    │   ├── wireRope.ts                  # Hanging-wire solver: gravity, length/bend limits, collisions with parts
+    │   ├── wireGeometry.ts              # Tube for a solved wire path, DuPont sockets, solder joints, ESC looms
     │   ├── WorkbenchScene.ts            # Three.js 3D CAD Workbench (PMREM, gizmos, tape measure, tie points)
     │   ├── arenaMeshes.ts               # Three.js 3D Arena obstacles (trees, gates, walls) & Rover/Drone models
     │   └── ArenaScene.ts                # Three.js 3D Physics Arena + interactive wall/element placement

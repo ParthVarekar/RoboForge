@@ -1,4 +1,5 @@
 import { getPartSpec, getPinSpec, type PinSpec } from '../catalog/partsCatalog';
+import { SOCKET_RISE_CM, wireLengthCm } from './wireLength';
 import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 
 export type DiagnosticSeverity = 'critical' | 'error' | 'warning' | 'info';
@@ -132,31 +133,16 @@ export function computeWireMetric(
   const pB = cB ? getPinWorldPositionCm(cB, wire.to.pinId) : null;
   if (!pA || !pB) return { wireId: wire.id, routedMm: 0, cutMm: 0 };
 
-  const dx = pB[0] - pA[0];
-  const dy = pB[1] - pA[1];
-  const dz = pB[2] - pA[2];
-  const horiz = Math.hypot(dx, dz);
-  const clearance = wire.clearanceCm ?? 0.55;
-  const style = wire.style ?? 'routed';
-
-  let lengthCm: number;
-  if (wire.waypoints && wire.waypoints.length > 0) {
-    const pts: Array<[number, number, number]> = [pA, ...wire.waypoints, pB];
-    let acc = 0.8;
-    for (let i = 0; i < pts.length - 1; i += 1) {
-      const u = pts[i]!;
-      const v = pts[i + 1]!;
-      acc += Math.hypot(v[0] - u[0], v[1] - u[1], v[2] - u[2]);
-    }
-    lengthCm = acc;
-  } else if (style === 'direct') {
-    lengthCm = Math.hypot(horiz, dy) + clearance * 1.1;
-  } else if (style === 'routed') {
-    // Routed Manhattan-filleted cables travel along orthogonal harness lanes
-    lengthCm = Math.abs(dx) * 0.72 + Math.abs(dz) * 0.72 + horiz * 0.42 + Math.abs(dy) + clearance * 1.4;
-  } else {
-    lengthCm = Math.hypot(horiz, dy) * 1.18 + Math.min(3.5, Math.max(0.8, horiz * 0.2));
+  // the same rule the 3D wire is laid with: straight span (through any tie points) plus the socket rise at each end
+  // and the style's slack
+  const pts: Array<readonly [number, number, number]> = [pA, ...(wire.waypoints ?? []), pB];
+  let span = 0;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const u = pts[i]!;
+    const v = pts[i + 1]!;
+    span += Math.hypot(v[0] - u[0], v[1] - u[1], v[2] - u[2]);
   }
+  const lengthCm = wireLengthCm(span, wire.style ?? 'routed', wire.clearanceCm ?? 0.45) + 2 * SOCKET_RISE_CM;
 
   const routedMm = Math.max(12, Math.round(lengthCm * 10));
   const cutMm = Math.ceil((routedMm + 30) / 5) * 5; // +30 mm stripping & solder slack, rounded to 5 mm

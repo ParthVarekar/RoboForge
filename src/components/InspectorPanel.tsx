@@ -125,11 +125,10 @@ export function InspectorPanel({
           <div className="part-meta">
             Style:{' '}
             {(selectedWire.style ?? 'routed') === 'routed'
-              ? 'Harness cable tray'
+              ? 'Natural (hangs and rests on the bench)'
               : selectedWire.style === 'direct'
-                ? 'Direct taut'
-                : 'Formed jumper'}{' '}
-            · Clearance {Math.round((selectedWire.clearanceCm ?? 0.45) * 10)} mm
+                ? 'Pulled tight'
+                : 'Arched jumper'}
             {selectedWire.waypoints && selectedWire.waypoints.length > 0
               ? ` · ${selectedWire.waypoints.length} tie pt${selectedWire.waypoints.length === 1 ? '' : 's'}`
               : ' · No tie points yet'}
@@ -141,21 +140,21 @@ export function InspectorPanel({
               className={`btn btn-sm ${(selectedWire.style ?? 'routed') === 'routed' ? 'btn-accent' : ''}`}
               onClick={() => onUpdateWire(selectedWire.id, { style: 'routed' as WireStyle })}
             >
-              Tidy Route
+              Natural
             </button>
             <button
               type="button"
               className={`btn btn-sm ${selectedWire.style === 'direct' ? 'btn-accent' : ''}`}
               onClick={() => onUpdateWire(selectedWire.id, { style: 'direct' as WireStyle })}
             >
-              Direct Taut
+              Tight
             </button>
             <button
               type="button"
               className={`btn btn-sm ${selectedWire.style === 'arched' ? 'btn-accent' : ''}`}
               onClick={() => onUpdateWire(selectedWire.id, { style: 'arched' as WireStyle })}
             >
-              Arched Jumper
+              Arched
             </button>
           </div>
 

@@ -2,14 +2,16 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { getPartSpec, getPinSpec } from '../catalog/partsCatalog';
+import { getPinSpec } from '../catalog/partsCatalog';
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
 import { pinKey } from '../engine/circuit';
-import type { ComponentInstance, StudioProject, Vec3, WirePinRef } from '../schema/projectSchema';
+import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 import { buildComponentGroup, setPinHaloVisible, type ComponentVisualHandle } from './componentMeshes';
 import { disposeObject } from './kit/pbr';
 import { getCuttingMatTexture, paintOledCanvas } from './materials';
-import { buildWireGroup, type ComponentFootprint, type WireEnd } from './wireGeometry';
+import { wireLengthCm } from '../engine/wireLength';
+import { buildWireGroup, DEFAULT_END, wireExit, wireRadius, type WireEnd } from './wireGeometry';
+import { NeighborField, ObstacleGrid, solveRope, type RopeObstacle, type V3 } from './wireRope';
 
 export type WorkbenchTool = 'select' | 'wire' | 'move' | 'lift' | 'rotate' | 'measure';
 export type BenchCameraView = 'iso' | 'top' | 'front' | 'right' | 'fit';
@@ -83,6 +85,9 @@ export class WorkbenchScene {
   private selectedComponentId: string | null = null;
   private selectedWireId: string | null = null;
   private routingWireId: string | null = null;
+  /** Solved wire paths, reused until a wire's ends, style or the parts around it change. */
+  private wireCache = new Map<string, { key: string; points: V3[]; quality: 'full' | 'fast' }>();
+  private previewGrid: { pinKey: string; grid: ObstacleGrid } | null = null;
   private pendingPin: WirePinRef | null = null;
   private measureStart: THREE.Vector3 | null = null;
   private callbacks: WorkbenchCallbacks;
@@ -149,7 +154,8 @@ export class WorkbenchScene {
     });
     this.transform.addEventListener('objectChange', () => {
       this.clampDraggedObject();
-      this.rebuildWires();
+      // quick pass while dragging; the full pass runs when the part is dropped
+      this.rebuildWires('fast');
     });
     this.scene.add(this.transform.getHelper());
 
@@ -569,29 +575,55 @@ export class WorkbenchScene {
     return pos;
   }
 
-  private computeObstacleFootprints(): ComponentFootprint[] {
-    const footprints: ComponentFootprint[] = [];
-    for (const c of this.project.components) {
-      if (c.kind === 'chassis_2wd' || c.kind === 'frame_quad_5in' || c.kind === 'cad_plate') continue;
-      const spec = getPartSpec(c.kind);
-      const [sx, sy, sz] = c.sizeOverride ?? spec.sizeCm;
-      const cos = Math.abs(Math.cos(c.rotationY));
-      const sin = Math.abs(Math.sin(c.rotationY));
-      const halfW = (sx * cos + sz * sin) * 0.5;
-      const halfD = (sx * sin + sz * cos) * 0.5;
-      footprints.push({
-        id: c.id,
-        minX: c.position[0] - halfW,
-        maxX: c.position[0] + halfW,
-        minZ: c.position[2] - halfD,
-        maxZ: c.position[2] + halfD,
-        topY: c.position[1] + sy,
+  /**
+   * Oriented boxes of the parts' meshes for wires to rest on and go around. Thin leads, decorations, pin targets and
+   * parts smaller than 2.5 mm (chip resistors and the like) are left out: a wire simply lies over them.
+   */
+  private collectWireObstacles(): RopeObstacle[] {
+    const out: RopeObstacle[] = [];
+    const world = new THREE.Box3();
+    const size = new THREE.Vector3();
+    const inv = new THREE.Matrix4();
+    for (const handle of this.handles.values()) {
+      handle.group.updateMatrixWorld(true);
+      handle.group.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.visible) return;
+        if (obj.userData.noPick || obj.userData.noFrame || obj.userData.pickType === 'pin') return;
+        const geo = mesh.geometry;
+        if (!geo || geo.type === 'TubeGeometry') return;
+        let local: THREE.Box3 | null;
+        if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+          const im = mesh as THREE.InstancedMesh;
+          if (!im.boundingBox) im.computeBoundingBox();
+          local = im.boundingBox;
+        } else {
+          if (!geo.boundingBox) geo.computeBoundingBox();
+          local = geo.boundingBox;
+        }
+        if (!local || local.isEmpty()) return;
+        world.copy(local).applyMatrix4(mesh.matrixWorld);
+        world.getSize(size);
+        if (Math.max(size.x, size.y, size.z) < 0.25) return;
+        inv.copy(mesh.matrixWorld).invert();
+        out.push({
+          min: [local.min.x, local.min.y, local.min.z],
+          max: [local.max.x, local.max.y, local.max.z],
+          m: mesh.matrixWorld.elements.slice(),
+          inv: inv.elements.slice(),
+          worldMin: [world.min.x, world.min.y, world.min.z],
+          worldMax: [world.max.x, world.max.y, world.max.z],
+        });
       });
     }
-    return footprints;
+    return out;
   }
 
-  private rebuildWires(): void {
+  /**
+   * Lays every wire as a hanging jumper (see wireRope.ts). Wires whose ends, style and surroundings are unchanged
+   * reuse their cached path; the rest are solved in order, each resting on the wires already laid.
+   */
+  private rebuildWires(quality: 'full' | 'fast' = 'full'): void {
     while (this.wireRoot.children.length > 0) {
       const child = this.wireRoot.children[0];
       if (child) {
@@ -600,44 +632,106 @@ export class WorkbenchScene {
       }
     }
 
-    const footprints = this.computeObstacleFootprints();
+    const grid = new ObstacleGrid(this.collectWireObstacles(), 0);
+    const field = new NeighborField();
     const compById = new Map(this.project.components.map((c) => [c.id, c]));
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
-    this.project.wires.forEach((wire, idx) => {
+    interface Job {
+      wire: WireConnection;
+      a: THREE.Vector3;
+      b: THREE.Vector3;
+      endA: WireEnd;
+      endB: WireEnd;
+      exitA: THREE.Vector3;
+      exitB: THREE.Vector3;
+      pins: V3[];
+      length: number;
+      radius: number;
+      isPower: boolean;
+      isEscPhase: boolean;
+      key: string;
+    }
+    const jobs: Job[] = [];
+    for (const wire of this.project.wires) {
       const a = this.getWorldPinPos(wire.from);
       const b = this.getWorldPinPos(wire.to);
-      if (!a || !b) return;
+      if (!a || !b) continue;
       const cA = compById.get(wire.from.componentId);
       const cB = compById.get(wire.to.componentId);
       const pinA = cA ? getPinSpec(cA.kind, wire.from.pinId) : undefined;
       const pinB = cB ? getPinSpec(cB.kind, wire.to.pinId) : undefined;
-      const isPower =
-        pinA?.role === 'power_out' ||
-        pinA?.role === 'power_in' ||
-        pinA?.role === 'gnd' ||
-        pinB?.role === 'power_out' ||
-        pinB?.role === 'power_in' ||
-        pinB?.role === 'gnd';
+      const powerRoles = ['power_out', 'power_in', 'gnd'];
+      const isPower = powerRoles.includes(pinA?.role ?? '') || powerRoles.includes(pinB?.role ?? '');
       const isEscPhase = pinA?.role === 'esc_phase' || pinB?.role === 'esc_phase';
+      const endA = this.getWireEnd(wire.from);
+      const endB = this.getWireEnd(wire.to);
+      const exitA = wireExit(a, endA);
+      const exitB = wireExit(b, endB);
+      const pins: V3[] = (wire.waypoints ?? []).map((w) => [w[0], w[1], w[2]]);
+      const chain = [exitA.toArray() as V3, ...pins, exitB.toArray() as V3];
+      let span = 0;
+      for (let i = 0; i < chain.length - 1; i += 1) span += Math.hypot(chain[i + 1]![0] - chain[i]![0], chain[i + 1]![1] - chain[i]![1], chain[i + 1]![2] - chain[i]![2]);
+      const length = wireLengthCm(span, wire.style ?? 'routed', wire.clearanceCm ?? 0.45);
+      const radius = wireRadius(isPower, isEscPhase);
+      // what this wire depends on: its own ends and shape, plus the parts in the space it can hang into
+      const reach = (length - span) / 2 + 1;
+      const lo = [0, 1, 2].map((k) => Math.min(...chain.map((p) => p[k]!)) - reach);
+      const hi = [0, 1, 2].map((k) => Math.max(...chain.map((p) => p[k]!)) + reach);
+      const around = grid.inRegion([lo[0]!, -1, lo[2]!], [hi[0]!, hi[1]! + 20, hi[2]!]);
+      let h = 0;
+      for (const o of around) for (const v of [...o.worldMin, ...o.worldMax]) h = (Math.imul(h, 31) + Math.round(v * 100)) | 0;
+      const key = JSON.stringify([chain.map((p) => p.map(r3)), endA.dir.toArray().map(r3), endB.dir.toArray().map(r3), r3(length), radius, wire.style ?? 'routed', h]);
+      jobs.push({ wire, a, b, endA, endB, exitA, exitB, pins, length, radius, isPower, isEscPhase, key });
+    }
 
-      const wg = buildWireGroup(a, b, {
-        wireId: wire.id,
-        fromEnd: this.getWireEnd(wire.from),
-        toEnd: this.getWireEnd(wire.to),
-        color: wire.color,
-        selected: wire.id === this.selectedWireId,
-        style: wire.style ?? 'routed',
-        clearanceCm: wire.clearanceCm ?? 0.45,
-        laneIndex: idx,
-        isPower,
-        isEscPhase,
-        fromCompId: wire.from.componentId,
-        toCompId: wire.to.componentId,
-        waypoints: wire.waypoints,
-        obstacles: footprints,
+    const solved = new Map<string, V3[]>();
+    for (const job of jobs) {
+      const cached = this.wireCache.get(job.wire.id);
+      if (cached && cached.key === job.key && (cached.quality === 'full' || quality === 'fast')) {
+        solved.set(job.wire.id, cached.points);
+        field.add(cached.points, job.radius);
+      }
+    }
+    for (const job of jobs) {
+      if (solved.has(job.wire.id)) continue;
+      const arched = job.wire.style === 'arched';
+      const points = solveRope({
+        start: job.exitA.toArray() as V3,
+        startDir: job.endA.dir.toArray() as V3,
+        end: job.exitB.toArray() as V3,
+        endDir: job.endB.dir.toArray() as V3,
+        length: job.length,
+        radius: job.radius,
+        grid,
+        floorY: 0,
+        gravity: arched ? 0.15 : 1,
+        stiffness: arched ? 0.97 : 0.88,
+        pins: job.pins,
+        neighbors: field,
+        steps: quality === 'full' ? 180 : 60,
       });
-      this.wireRoot.add(wg);
-    });
+      solved.set(job.wire.id, points);
+      field.add(points, job.radius);
+      this.wireCache.set(job.wire.id, { key: job.key, points, quality });
+    }
+    const live = new Set(jobs.map((j) => j.wire.id));
+    for (const id of [...this.wireCache.keys()]) if (!live.has(id)) this.wireCache.delete(id);
+
+    for (const job of jobs) {
+      this.wireRoot.add(
+        buildWireGroup(solved.get(job.wire.id) ?? [], job.a, job.b, {
+          wireId: job.wire.id,
+          fromEnd: job.endA,
+          toEnd: job.endB,
+          color: job.wire.color,
+          selected: job.wire.id === this.selectedWireId,
+          isPower: job.isPower,
+          isEscPhase: job.isEscPhase,
+          waypoints: job.wire.waypoints,
+        }),
+      );
+    }
   }
 
   private syncTransformAttachment(): void {
@@ -796,19 +890,34 @@ export class WorkbenchScene {
       this.scene.remove(this.previewWireGroup);
       disposeObject(this.previewWireGroup);
     }
-    this.previewWireGroup = buildWireGroup(startPos, endPos, {
+    const pinKey = this.pendingPin ? `${this.pendingPin.componentId}:${this.pendingPin.pinId}` : '';
+    if (!this.previewGrid || this.previewGrid.pinKey !== pinKey) {
+      this.previewGrid = { pinKey, grid: new ObstacleGrid(this.collectWireObstacles(), 0) };
+    }
+    const fromEnd = this.pendingPin ? this.getWireEnd(this.pendingPin) : DEFAULT_END;
+    const exitA = wireExit(startPos, fromEnd);
+    const exitB = wireExit(endPos, DEFAULT_END);
+    const span = exitA.distanceTo(exitB);
+    const points = solveRope({
+      start: exitA.toArray() as V3,
+      startDir: fromEnd.dir.toArray() as V3,
+      end: exitB.toArray() as V3,
+      endDir: [0, 1, 0],
+      length: wireLengthCm(span, 'routed'),
+      radius: wireRadius(false, false),
+      grid: this.previewGrid.grid,
+      floorY: 0,
+      gravity: 1,
+      stiffness: 0.88,
+      steps: 50,
+    });
+    this.previewWireGroup = buildWireGroup(points, startPos, endPos, {
       wireId: '__preview__',
-      fromEnd: this.pendingPin ? this.getWireEnd(this.pendingPin) : undefined,
+      fromEnd,
       color: this.wireColor,
       selected: true,
-      style: 'routed',
-      clearanceCm: 0.45,
-      laneIndex: 0,
       isPower: false,
       isEscPhase: false,
-      fromCompId: this.pendingPin?.componentId ?? '',
-      toCompId: '',
-      obstacles: this.computeObstacleFootprints(),
     });
     this.scene.add(this.previewWireGroup);
   }
@@ -820,12 +929,18 @@ export class WorkbenchScene {
 
     // 0a. Manual Wire Tie-Point placement ("Route by hand")
     if (this.routingWireId) {
+      // the clip sticks to whatever is under the cursor (a part, the deck or the bench) and the wire runs through it
+      const surface = this.raycaster
+        .intersectObjects(this.componentRoot.children, true)
+        .find((h) => h.object.userData.pickType !== 'pin' && !h.object.userData.noPick);
       const pt = new THREE.Vector3();
-      if (this.raycaster.ray.intersectPlane(this.benchPlane, pt)) {
+      const onBench = this.raycaster.ray.intersectPlane(this.benchPlane, pt);
+      if (surface) pt.copy(surface.point);
+      if (surface || onBench) {
         const step = this.snapMm / 10;
         const sx = Number((Math.round(pt.x / step) * step).toFixed(2));
         const sz = Number((Math.round(pt.z / step) * step).toFixed(2));
-        this.callbacks.onAddWireWaypoint(this.routingWireId, [sx, 0.95, sz]);
+        this.callbacks.onAddWireWaypoint(this.routingWireId, [sx, Number((Math.max(0, pt.y) + 0.14).toFixed(2)), sz]);
       }
       return;
     }
