@@ -19,24 +19,29 @@ studio_trial/
     │   └── projectSchema.ts             # Zod schemas for projects, parts, wires, waypoints, arena
     ├── catalog/
     │   ├── partsCatalog.ts              # 23 parts (19 electronic/mechanical + 4 CAD shapes) & pin specs
-    │   ├── partThumbnails.ts            # Crisp 2D SVG thumbnails for every part card in the sidebar
+    │   ├── boardGeometry.ts             # Real module dimensions & pin positions shared by catalog and 3D models
+    │   ├── partThumbnails.ts            # 2D SVG icons: placeholder/fallback while 3D thumbnails render
     │   ├── presets.ts                   # 5 starter presets + 5 Arduino/ESP32 C++ sketch templates
     │   └── arenaPresets.ts              # 5 customizable Arena worlds & 10 obstacle/nature element specs
     ├── engine/
     │   ├── circuit.ts                   # Union-Find netlist solver, electrical rules, BOM/CoM/cut-list
-    │   ├── sketchTranspiler.ts          # Offline Arduino/ESP32 C++ to async JS transpiler
+    │   ├── sketchTranspiler.ts          # Arduino/ESP32 C++ checks (line/column) and line-preserving translation
+    │   ├── halApi.ts                    # Virtual ESP32 API list: name checks, autocomplete, hover & hints
     │   ├── runtime.ts                   # 60 Hz virtual ESP32 HAL runtime, OLED & 25 Hz scope sampler
     │   ├── arenaPhysics.ts              # cannon-es 3D rover & drone flight physics + 2D occupancy SLAM
     │   ├── roboforgeExport.ts           # Exporter for roboforge-studio-bridge/v1 JSON
     │   └── __tests__/                   # Vitest unit & deterministic simulation test suites
     │       ├── circuit.test.ts          # 8 electrical netlist, divider, short, and motor polarity tests
     │       ├── runtime.test.ts          # 5 transpiler, GPIO PWM, ultrasonic, OLED, and button tests
+    │       ├── sketchTranspiler.test.ts # 23 line mapping, compile/runtime error, watchdog & C++ behaviour tests
     │       ├── arenaPhysics.test.ts     # 5 raycast, deadband, motor pull, custom wall & drone gate tests
     │       └── roomMapper.test.ts       # 3 full 28s–60s autonomous zero-collision room mapping tests
     ├── viewport/
     │   ├── materials.ts                 # Cached procedural textures (PCB silkscreens, carbon, grass, bark)
-    │   ├── partDetailBuilders.ts        # Detailed 3D geometry builders for PCBs, motors, LiPos, frames
-    │   ├── componentMeshes.ts           # ComponentVisualHandle factory & 2.54 mm pin header builder
+    │   ├── kit/                         # Shared parts kit: PBR materials, board artwork, PCBs, headers, packages, leads
+    │   ├── parts/                       # One builder per part, grouped: controllers, modules, discretes, power, frames
+    │   ├── partPreview.ts               # Offscreen renders of the 3D models for the parts list thumbnails
+    │   ├── componentMeshes.ts           # Builds a part via parts/, adds pin pick targets, contact shadow, fault ring
     │   ├── wireGeometry.ts              # Filleted orthogonal cable harness, DuPont plugs & 3-wire ESC looms
     │   ├── WorkbenchScene.ts            # Three.js 3D CAD Workbench (PMREM, gizmos, tape measure, tie points)
     │   ├── arenaMeshes.ts               # Three.js 3D Arena obstacles (trees, gates, walls) & Rover/Drone models
@@ -49,7 +54,9 @@ studio_trial/
         ├── Viewport3D.tsx               # 3D canvas host, Browser tree, AxisGizmo, Camera bar, Telemetry HUD
         ├── AxisGizmo.tsx                # Interactive 3D X/Y/Z orientation widget in top-right of workbench
         ├── InspectorPanel.tsx           # Right dock: contextual Part Inspector, Wire Card & Circuit Checks
-        ├── CodePanel.tsx                # Right dock: offline Monaco C++ Editor, Verify button & template loader
+        ├── CodePanel.tsx                # Right dock: Monaco sketch editor, live Problems, Verify/Run/Stop, status bar
+        ├── sketchLanguage.ts            # Editor themes, autocomplete, hover help & parameter hints
+        ├── ConfirmDialog.tsx            # Asks before a preset or example replaces your work
         ├── SerialPanel.tsx              # Right dock: bi-directional 115200-baud Serial Monitor & command input
         ├── LogicPlotterPanel.tsx        # Right dock: 4-channel 25 Hz PWM/GPIO live oscilloscope canvas
         ├── MapPanel.tsx                 # Right dock: live 2D Occupancy SLAM Map canvas & Room Mapper launcher

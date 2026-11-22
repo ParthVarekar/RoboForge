@@ -27,7 +27,7 @@ Every texture is generated procedurally in-memory at startup (100% offline, zero
 
 ## 3. Complete Catalog of All 23 Ultra-Detailed 3D Components
 
-All 23 components are defined in `src/catalog/partsCatalog.ts` and constructed in `src/viewport/partDetailBuilders.ts` and `src/viewport/componentMeshes.ts`:
+All 23 components are defined in `src/catalog/partsCatalog.ts` (real dimensions in `src/catalog/boardGeometry.ts`) and built by `src/viewport/parts/*.ts` on the shared kit in `src/viewport/kit/`, then assembled in `src/viewport/componentMeshes.ts`. Current dimensions and sources are in [06 — Component References](06_COMPONENT_REFERENCES.md); the per-part notes below describe the earlier models:
 
 ### 3.1 Controllers & Drivers
 | Kind | Part Name | Size (cm) | Mass | Price | 3D Architectural & Electronic Details |
