@@ -79,6 +79,52 @@ export class ObstacleGrid {
     return this.cells.get(cellKey(Math.floor(x / c), Math.floor(y / c), Math.floor(z / c))) ?? EMPTY;
   }
 
+  /**
+   * Height of whatever a wire would lie on at (x, z): the top of the highest part under that point, or the bench.
+   * Each box is tested at its own mid-height in its local frame, so turned and upright parts are exact.
+   */
+  /** Top surface height at the centre of each cell of an nx x nz grid (row-major in z), as `surfaceY` gives it. */
+  heightField(x0: number, z0: number, nx: number, nz: number, pitch: number, floorY: number): Float32Array {
+    const h = new Float32Array(nx * nz).fill(floorY);
+    for (const o of this.all) {
+      const i0 = Math.max(0, Math.ceil((o.worldMin[0] - x0) / pitch));
+      const i1 = Math.min(nx - 1, Math.floor((o.worldMax[0] - x0) / pitch));
+      const k0 = Math.max(0, Math.ceil((o.worldMin[2] - z0) / pitch));
+      const k1 = Math.min(nz - 1, Math.floor((o.worldMax[2] - z0) / pitch));
+      if (i0 > i1 || k0 > k1) continue;
+      const y = (o.worldMin[1] + o.worldMax[1]) / 2;
+      const top = o.worldMax[1];
+      const v = o.inv;
+      for (let k = k0; k <= k1; k += 1) {
+        const z = z0 + k * pitch;
+        for (let i = i0; i <= i1; i += 1) {
+          const c = k * nx + i;
+          if (h[c]! >= top) continue;
+          const x = x0 + i * pitch;
+          const lx = v[0]! * x + v[4]! * y + v[8]! * z + v[12]!;
+          const ly = v[1]! * x + v[5]! * y + v[9]! * z + v[13]!;
+          const lz = v[2]! * x + v[6]! * y + v[10]! * z + v[14]!;
+          if (lx >= o.min[0] && lx <= o.max[0] && ly >= o.min[1] - 1e-6 && ly <= o.max[1] + 1e-6 && lz >= o.min[2] && lz <= o.max[2]) h[c] = top;
+        }
+      }
+    }
+    return h;
+  }
+
+  surfaceY(x: number, z: number, floorY: number): number {
+    let top = floorY;
+    for (const o of this.all) {
+      if (x < o.worldMin[0] || x > o.worldMax[0] || z < o.worldMin[2] || z > o.worldMax[2] || o.worldMax[1] <= top) continue;
+      const y = (o.worldMin[1] + o.worldMax[1]) / 2;
+      const v = o.inv;
+      const lx = v[0]! * x + v[4]! * y + v[8]! * z + v[12]!;
+      const ly = v[1]! * x + v[5]! * y + v[9]! * z + v[13]!;
+      const lz = v[2]! * x + v[6]! * y + v[10]! * z + v[14]!;
+      if (lx >= o.min[0] && lx <= o.max[0] && ly >= o.min[1] - 1e-6 && ly <= o.max[1] + 1e-6 && lz >= o.min[2] && lz <= o.max[2]) top = o.worldMax[1];
+    }
+    return top;
+  }
+
   /** Obstacles whose world box overlaps a region (for the starting arch height). */
   inRegion(min: V3, max: V3): PreparedObstacle[] {
     return this.all.filter(
@@ -108,6 +154,37 @@ export class NeighborField {
   private key(x: number, y: number, z: number): number {
     const c = this.cell;
     return cellKey(Math.floor(x / c), Math.floor(y / c), Math.floor(z / c));
+  }
+
+  /** Adds everything laid in another field. */
+  merge(other: NeighborField): void {
+    for (const [key, list] of other.cells) {
+      const mine = this.cells.get(key);
+      if (mine) mine.push(...list);
+      else this.cells.set(key, [...list]);
+    }
+  }
+
+  /** Whether any of `points` (a wire of `radius`) would touch a wire already laid. */
+  overlaps(points: readonly V3[], radius: number, slack = 0.004): boolean {
+    const c = this.cell;
+    for (const p of points) {
+      const cx = Math.floor(p[0] / c);
+      const cy = Math.floor(p[1] / c);
+      const cz = Math.floor(p[2] / c);
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dz = -1; dz <= 1; dz += 1) {
+            const list = this.cells.get(cellKey(cx + dx, cy + dy, cz + dz));
+            if (!list) continue;
+            for (let k = 0; k < list.length; k += 4) {
+              if (len(p[0] - list[k]!, p[1] - list[k + 1]!, p[2] - list[k + 2]!) < radius + list[k + 3]! - slack) return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
   }
 
   /** Moves the point at `pos[i..i+2]` out of any laid wire it overlaps. */
@@ -161,6 +238,11 @@ export interface RopeInput {
   stiffness: number;
   /** Tie points the wire must pass through, in order (hand routing). */
   pins?: readonly V3[];
+  /**
+   * How the spare length is shared between the legs from the start through each tie point to the end (one value per
+   * leg, cm or any relative scale). Without it the spare length is shared in proportion to each leg's length.
+   */
+  legSlack?: readonly number[];
   /** Wires already laid, to rest on instead of passing through. */
   neighbors?: NeighborField;
   steps: number;
@@ -171,10 +253,9 @@ const STUB_POINTS = 2;
 /** Lays one wire and returns its points from start to end. */
 export function solveRope(o: RopeInput): V3[] {
   const r = o.radius;
-  // the straight stubs at the ends are part of the wire too, so they get their own length on top
-  const total = o.length + 2 * STUB_POINTS * 0.3;
-  const n = Math.max(12, Math.min(84, Math.round(total / 0.3) + 1));
-  const seg = total / (n - 1);
+  // links of about 3 mm; the straight stubs at the ends are links of their own on top of the rest length
+  const n = Math.max(12, Math.min(90, Math.round(o.length / 0.3) + 1 + 2 * STUB_POINTS));
+  const seg = o.length / (n - 1 - 2 * STUB_POINTS);
   const pos = new Float64Array(n * 3);
   const prev = new Float64Array(n * 3);
   const pinned = new Uint8Array(n);
@@ -204,14 +285,9 @@ export function solveRope(o: RopeInput): V3[] {
   const a1 = n - 1 - STUB_POINTS;
   const anchorPts: V3[] = [get(a0), ...(o.pins ?? []), get(a1)];
   const legs = anchorPts.slice(1).map((p, i) => len(p[0] - anchorPts[i]![0], p[1] - anchorPts[i]![1], p[2] - anchorPts[i]![2]));
-  const totalLeg = legs.reduce((s, v) => s + v, 0) || 1;
+  const counts = shareLinks(legs, a1 - a0, seg, o.legSlack);
   const anchorIdx = [a0];
-  let acc = 0;
-  for (let k = 0; k < legs.length - 1; k += 1) {
-    acc += legs[k]!;
-    anchorIdx.push(Math.max(anchorIdx[anchorIdx.length - 1]! + 1, Math.min(a1 - 1, Math.round(a0 + ((a1 - a0) * acc) / totalLeg))));
-  }
-  anchorIdx.push(a1);
+  for (const c of counts) anchorIdx.push(anchorIdx[anchorIdx.length - 1]! + c);
   anchorIdx.forEach((idx, k) => {
     if (k > 0 && k < anchorIdx.length - 1) {
       set(idx, anchorPts[k]!);
@@ -219,16 +295,8 @@ export function solveRope(o: RopeInput): V3[] {
     }
   });
 
-  // start every free point on an arch above the parts in the way, then let it settle
-  const lo: V3 = [Infinity, Infinity, Infinity];
-  const hi: V3 = [-Infinity, -Infinity, -Infinity];
-  for (const p of anchorPts) for (let k = 0; k < 3; k += 1) {
-    lo[k] = Math.min(lo[k]!, p[k]!);
-    hi[k] = Math.max(hi[k]!, p[k]!);
-  }
-  const reach = Math.max(0.5, (o.length - totalLeg) * 0.5);
-  const region = o.grid.inRegion([lo[0] - reach, o.floorY, lo[2] - reach], [hi[0] + reach, hi[1] + 50, hi[2] + reach]);
-  const topOfRegion = region.reduce((m, ob) => Math.max(m, ob.worldMax[1]), o.floorY);
+  // start every free point on an arch just clear of the parts under the line between its anchors, then let it settle
+  // (not above the tallest part nearby: a wire started over an antenna would end up hung on it like a washing line)
   for (let k = 0; k < anchorIdx.length - 1; k += 1) {
     const i0 = anchorIdx[k]!;
     const i1 = anchorIdx[k + 1]!;
@@ -237,7 +305,13 @@ export function solveRope(o: RopeInput): V3[] {
     const legLen = len(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
     const restLeg = (i1 - i0) * seg;
     const sagRoom = Math.sqrt(Math.max(0, (3 * legLen * Math.max(0, restLeg - legLen)) / 8));
-    const lift = Math.max(sagRoom, topOfRegion + 2 * r + 0.6 - Math.min(p0[1], p1[1]));
+    let clear = 0;
+    for (let j = 1; j < 16; j += 1) {
+      const t = j / 16;
+      const under = o.grid.surfaceY(p0[0] + (p1[0] - p0[0]) * t, p0[2] + (p1[2] - p0[2]) * t, o.floorY) + 2 * r + 0.3;
+      clear = Math.max(clear, (under - (p0[1] + (p1[1] - p0[1]) * t)) / Math.max(0.3, Math.sin(Math.PI * t)));
+    }
+    const lift = Math.max(sagRoom, clear);
     for (let i = i0 + 1; i < i1; i += 1) {
       const t = (i - i0) / (i1 - i0);
       set(i, [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t + lift * Math.sin(Math.PI * t), p0[2] + (p1[2] - p0[2]) * t]);
@@ -250,6 +324,35 @@ export function solveRope(o: RopeInput): V3[] {
   const damping = 0.9;
   const minBend = o.stiffness * 2 * seg;
   const passes = 8;
+  /**
+   * Tethers (long-range attachments): no point may be farther from the fixed point on either side of it than the
+   * length of wire between them. This holds the whole chain to its length at once, where the link-by-link constraint
+   * alone lets a long hanging wire stretch under gravity.
+   */
+  const tether = () => {
+    for (let k = 0; k < anchorIdx.length - 1; k += 1) {
+      const i0 = anchorIdx[k]!;
+      const i1 = anchorIdx[k + 1]!;
+      for (let i = i0 + 1; i < i1; i += 1) {
+        if (pinned[i]) continue;
+        for (const [j, max] of [
+          [i0, (i - i0) * seg],
+          [i1, (i1 - i) * seg],
+        ] as const) {
+          const b = i * 3;
+          const dx = pos[b]! - pos[j * 3]!;
+          const dy = pos[b + 1]! - pos[j * 3 + 1]!;
+          const dz = pos[b + 2]! - pos[j * 3 + 2]!;
+          const d = len(dx, dy, dz);
+          if (d <= max || d < 1e-9) continue;
+          const f = max / d;
+          pos[b] = pos[j * 3]! + dx * f;
+          pos[b + 1] = pos[j * 3 + 1]! + dy * f;
+          pos[b + 2] = pos[j * 3 + 2]! + dz * f;
+        }
+      }
+    }
+  };
 
   const collide = (i: number, withNeighbors: boolean) => {
     const b = i * 3;
@@ -296,7 +399,8 @@ export function solveRope(o: RopeInput): V3[] {
       pos[b + 1] = y + nrm[1] * d;
       pos[b + 2] = z + nrm[2] * d;
     }
-    if (withNeighbors && o.neighbors) o.neighbors.separate(pos, b, r);
+    // padded by half a link, so no wire can slip between two points of this one unseen
+    if (withNeighbors && o.neighbors) o.neighbors.separate(pos, b, r + seg * 0.5);
   };
 
   for (let step = 0; step < o.steps; step += 1) {
@@ -312,22 +416,60 @@ export function solveRope(o: RopeInput): V3[] {
     }
     const neighborsOn = step > o.steps * 0.3;
     for (let pass = 0; pass < passes; pass += 1) {
-      for (let i = 0; i < n - 1; i += 1) relax(pos, pinned, i, i + 1, seg, false);
+      // sweep the links forwards and backwards in turn, so a correction travels both ways along the chain
+      if (pass % 2 === 0) for (let i = 0; i < n - 1; i += 1) relax(pos, pinned, i, i + 1, seg, false);
+      else for (let i = n - 2; i >= 0; i -= 1) relax(pos, pinned, i, i + 1, seg, false);
       if (minBend > 0) for (let i = 0; i < n - 2; i += 1) relax(pos, pinned, i, i + 2, minBend, true);
+      tether();
       for (let i = 0; i < n; i += 1) if (!pinned[i]) collide(i, neighborsOn && pass === passes - 1);
     }
   }
 
-  // settle with gravity off: the chain comes back to its exact length and spreads any tight turn over more links
-  for (let k = 0; k < 60; k += 1) {
-    for (let i = 0; i < n - 1; i += 1) relax(pos, pinned, i, i + 1, seg, false);
+  // settle with gravity off: the chain comes back to its exact length and spreads any tight turn over more links. A
+  // sagging chain shortens only slowly (each link pulls mostly along the curve), so this takes many cheap sweeps; the
+  // parts and other wires are checked every third sweep and at the end.
+  const SETTLE = 600;
+  for (let k = 0; k < SETTLE; k += 1) {
+    if (k % 2 === 0) for (let i = 0; i < n - 1; i += 1) relax(pos, pinned, i, i + 1, seg, false);
+    else for (let i = n - 2; i >= 0; i -= 1) relax(pos, pinned, i, i + 1, seg, false);
     if (minBend > 0) for (let i = 0; i < n - 2; i += 1) relax(pos, pinned, i, i + 2, minBend, true);
-    for (let i = 0; i < n; i += 1) if (!pinned[i]) collide(i, k >= 48);
+    if (k % 3 === 0 || k === SETTLE - 1) for (let i = 0; i < n; i += 1) if (!pinned[i]) collide(i, k >= SETTLE / 5);
   }
+  // last word to the other wires: a wire rests on them rather than passing through, even at a little stretch
+  if (o.neighbors) for (let k = 0; k < 6; k += 1) for (let i = 0; i < n; i += 1) if (!pinned[i]) collide(i, true);
 
   const out: V3[] = [];
   for (let i = 0; i < n; i += 1) out.push(get(i));
   return out;
+}
+
+/**
+ * Splits `links` chain links between legs of straight length `legs`: each leg gets its straight length plus its share
+ * of the spare length. A leg with no share gets no more links than its straight length (it stays taut instead of
+ * buckling sideways); links left over by rounding go to the legs with the most slack.
+ */
+export function shareLinks(legs: readonly number[], links: number, seg: number, slack?: readonly number[]): number[] {
+  const n = legs.length;
+  if (n === 0) return [];
+  const straight = legs.reduce((a, b) => a + b, 0);
+  const spare = Math.max(0, links * seg - straight);
+  const weights = slack && slack.length === n ? slack.map((v) => Math.max(0, v)) : [...legs];
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  const want = legs.map((leg, k) => (leg + (wsum > 1e-9 ? (spare * weights[k]!) / wsum : spare / n)) / seg);
+  const counts = want.map((c) => Math.max(1, Math.floor(c)));
+  let left = links - counts.reduce((a, b) => a + b, 0);
+  const byNeed = want.map((_, k) => k).sort((x, y) => weights[y]! - weights[x]! || want[y]! - counts[y]! - (want[x]! - counts[x]!));
+  const pool = byNeed.filter((k) => weights[k]! > 1e-9);
+  const takers = pool.length > 0 ? pool : byNeed;
+  for (let i = 0; left > 0; i = (i + 1) % takers.length, left -= 1) counts[takers[i]!]! += 1;
+  while (left < 0) {
+    let k = 0;
+    for (let j = 1; j < n; j += 1) if (counts[j]! > counts[k]!) k = j;
+    if (counts[k]! <= 1) break;
+    counts[k]! -= 1;
+    left += 1;
+  }
+  return counts;
 }
 
 /** Distance constraint between points a and b; `minOnly` only pushes apart (bending limit). */

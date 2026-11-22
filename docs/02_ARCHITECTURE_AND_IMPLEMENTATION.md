@@ -42,7 +42,9 @@ studio_trial/
     │   ├── parts/                       # One builder per part, grouped: controllers, modules, discretes, power, frames
     │   ├── partPreview.ts               # Offscreen renders of the 3D models for the parts list thumbnails
     │   ├── componentMeshes.ts           # Builds a part via parts/, adds pin pick targets, contact shadow, fault ring
-    │   ├── wireRope.ts                  # Hanging-wire solver: gravity, length/bend limits, collisions with parts
+    │   ├── wireDeckRouter.ts            # Lays natural wires in deck lanes: runs, socket drops, bridges, last overlap check
+    │   ├── wireRope.ts                  # Hanging-wire solver (tight/arched/hand-routed wires, ESC looms)
+    │   ├── wireRouting.ts               # Rest length per leg for hanging wires, path sampling helpers
     │   ├── wireGeometry.ts              # Tube for a solved wire path, DuPont sockets, solder joints, ESC looms
     │   ├── WorkbenchScene.ts            # Three.js 3D CAD Workbench (PMREM, gizmos, tape measure, tie points)
     │   ├── arenaMeshes.ts               # Three.js 3D Arena obstacles (trees, gates, walls) & Rover/Drone models

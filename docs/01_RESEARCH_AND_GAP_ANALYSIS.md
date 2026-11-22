@@ -45,7 +45,7 @@ While Constructa and BenchTwin excel at visual 3D electronics assembly and brows
 | :--- | :---: | :---: | :---: | :---: |
 | **Interactive 3D Electronics Workbench** | No (2D/chat-based) | Yes | Yes | **Yes (Light & Dark Studio + PMREM PBR)** |
 | **High-Detail Procedural 3D Components** | Basic OpenSCAD/URDF | High | Medium | **23 Multi-Part 3D Models with PCB Silkscreens** |
-| **Pin-to-Pin 3D Wire Harness Routing** | No | Yes | Yes | **Yes (wires hang and rest on parts + DuPont sockets)** |
+| **Pin-to-Pin 3D Wire Harness Routing** | No | Yes | Yes | **Yes (wires dressed in deck lanes, no overlaps + DuPont sockets)** |
 | **Manual Wire Tie-Points (`Route by hand`)** | No | Yes | No | **Yes (Click bench to add tie clips + cut-list mm)** |
 | **Real-Time Electrical Rule & Short Checker** | Static pin notes | Yes | Partial | **Yes (Union-Find Nets, Shorts, 5V->3.3V Divider, Guard)** |
 | **Power, Mass, Cost & 3D CoM Budget** | Partial | Yes | Partial | **Yes (Live mA, Runtime min, Grams, USD, 3D CoM)** |
@@ -63,7 +63,7 @@ While Constructa and BenchTwin excel at visual 3D electronics assembly and brows
 ## 4. Key Research Takeaways Implemented in `studio_trial/`
 
 1. **Zero-Spaghetti Wiring Is Essential for 3D Electronics Readability:**
-   - Early 3D wiring prototypes that use unconstrained `CatmullRomCurve3` splines bow outward like loose hair and slice across ICs. Replacing spline interpolation with **straight line segments joined by tight quadratic corner fillets (`buildFilletedCurvePath`)**, stratified power/signal heights, obstacle-aware perimeter channels, and parallel ribbon offsets makes complex 30-wire boards (like the full RoboForge 2WD Rover) look like an engineered wiring harness. (Since replaced: wires are now solved as hanging ropes that rest on the parts; see doc 03, section 4.)
+   - Early 3D wiring prototypes that use unconstrained `CatmullRomCurve3` splines bow outward like loose hair and slice across ICs. Replacing spline interpolation with **straight line segments joined by tight quadratic corner fillets (`buildFilletedCurvePath`)**, stratified power/signal heights, obstacle-aware perimeter channels, and parallel ribbon offsets makes complex 30-wire boards (like the full RoboForge 2WD Rover) look like an engineered wiring harness. (Since replaced: natural wires are now laid flat in deck lanes and checked so no two touch; see doc 03, section 4.)
 2. **Circuit Rules Must Mirror Real ESP32 Failure Modes:**
    - Generic simulators let users wire any pin to anything. Our circuit engine (`src/engine/circuit.ts`) specifically checks ESP32 hardware traps: wiring motor PWM or `HC-SR04 TRIG` to input-only `GPIO34–39`, pulling boot-strapping pins (`GPIO0/2/12/15`), wiring `5 V ECHO` straight into a `3.3 V` ESP32 pin without a `10k/10k` divider, omitting the `1000 uF` bulk capacitor on `DRV8833 VM`, or creating a direct `BAT+ -> GND` short.
 3. **The 3D Arena Must Be User-Sculptable Across Domains:**

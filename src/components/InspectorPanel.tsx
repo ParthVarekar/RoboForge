@@ -125,7 +125,7 @@ export function InspectorPanel({
           <div className="part-meta">
             Style:{' '}
             {(selectedWire.style ?? 'routed') === 'routed'
-              ? 'Natural (hangs and rests on the bench)'
+              ? 'Natural (laid flat on the deck in tidy lanes)'
               : selectedWire.style === 'direct'
                 ? 'Pulled tight'
                 : 'Arched jumper'}

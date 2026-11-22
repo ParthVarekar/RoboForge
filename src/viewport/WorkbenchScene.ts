@@ -12,6 +12,8 @@ import { getCuttingMatTexture, paintOledCanvas } from './materials';
 import { wireLengthCm } from '../engine/wireLength';
 import { buildWireGroup, DEFAULT_END, wireExit, wireRadius, type WireEnd } from './wireGeometry';
 import { NeighborField, ObstacleGrid, solveRope, type RopeObstacle, type V3 } from './wireRope';
+import { densify, makeDeckGrid, routeDeck, separateWires, shapeBridge, shapeDrop, type DeckRoute } from './wireDeckRouter';
+import { arcLengths3, planWire, pointAlong } from './wireRouting';
 
 export type WorkbenchTool = 'select' | 'wire' | 'move' | 'lift' | 'rotate' | 'measure';
 export type BenchCameraView = 'iso' | 'top' | 'front' | 'right' | 'fit';
@@ -88,6 +90,8 @@ export class WorkbenchScene {
   /** Solved wire paths, reused until a wire's ends, style or the parts around it change. */
   private wireCache = new Map<string, { key: string; points: V3[]; quality: 'full' | 'fast' }>();
   private previewGrid: { pinKey: string; grid: ObstacleGrid } | null = null;
+  private deckCache: { key: string; routes: Map<string, DeckRoute> } | null = null;
+  private finalCache: { key: string; quality: 'full' | 'fast'; paths: Map<string, V3[]>; tips: Map<string, [THREE.Vector3, THREE.Vector3]> } | null = null;
   private pendingPin: WirePinRef | null = null;
   private measureStart: THREE.Vector3 | null = null;
   private callbacks: WorkbenchCallbacks;
@@ -620,8 +624,12 @@ export class WorkbenchScene {
   }
 
   /**
-   * Lays every wire as a hanging jumper (see wireRope.ts). Wires whose ends, style and surroundings are unchanged
-   * reuse their cached path; the rest are solved in order, each resting on the wires already laid.
+   * Lays every wire. "Natural" wires are dressed on the deck like a hand-wired board (wireDeckRouter.ts): straight
+   * runs along the chassis axes with rounded corners, side by side in bundles, never sharing a lane and hopping over
+   * a wire they cross, and at each end a formed piece rising out of the socket and coming down onto the run. A jumper
+   * between two pins of one part is a small bridge. Tight and arched wires, hand-routed wires, ESC looms and natural
+   * wires that cannot lie on the deck hang as they are (wireRope.ts). A last check lifts or eases aside any wire that
+   * still touches another. Results are cached until a wire's ends, style or the parts around it change.
    */
   private rebuildWires(quality: 'full' | 'fast' = 'full'): void {
     while (this.wireRoot.children.length > 0) {
@@ -635,24 +643,41 @@ export class WorkbenchScene {
     const grid = new ObstacleGrid(this.collectWireObstacles(), 0);
     const field = new NeighborField();
     const compById = new Map(this.project.components.map((c) => [c.id, c]));
+    const steps = quality === 'full' ? 180 : 60;
     const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    /** Fingerprint of the parts in the space a wire can hang into, so moving a nearby part re-lays it. */
+    const regionHash = (chain: readonly V3[], reach: number) => {
+      const lo = [0, 1, 2].map((k) => Math.min(...chain.map((pt) => pt[k]!)) - reach);
+      const hi = [0, 1, 2].map((k) => Math.max(...chain.map((pt) => pt[k]!)) + reach);
+      let h = 0;
+      for (const o of grid.inRegion([lo[0]!, -1, lo[2]!], [hi[0]!, hi[1]! + 20, hi[2]!])) for (const v of [...o.worldMin, ...o.worldMax]) h = (Math.imul(h, 31) + Math.round(v * 100)) | 0;
+      return h;
+    };
+    const live = new Set<string>();
+    /** Solves through the cache: an entry is reused when its key matches (a fast entry is redone on a full pass). */
+    const cachedSolve = (id: string, key: string, input: Omit<Parameters<typeof solveRope>[0], 'grid' | 'floorY' | 'steps'>): V3[] => {
+      live.add(id);
+      const hit = this.wireCache.get(id);
+      if (hit && hit.key === key && (hit.quality === 'full' || quality === 'fast')) return hit.points;
+      const points = solveRope({ ...input, grid, floorY: 0, steps });
+      this.wireCache.set(id, { key, points, quality });
+      return points;
+    };
 
-    interface Job {
+    interface WireInfo {
       wire: WireConnection;
       a: THREE.Vector3;
       b: THREE.Vector3;
       endA: WireEnd;
       endB: WireEnd;
-      exitA: THREE.Vector3;
-      exitB: THREE.Vector3;
-      pins: V3[];
-      length: number;
+      exitA: V3;
+      exitB: V3;
       radius: number;
       isPower: boolean;
       isEscPhase: boolean;
-      key: string;
+      pins: V3[];
     }
-    const jobs: Job[] = [];
+    const infos: WireInfo[] = [];
     for (const wire of this.project.wires) {
       const a = this.getWorldPinPos(wire.from);
       const b = this.getWorldPinPos(wire.to);
@@ -666,69 +691,295 @@ export class WorkbenchScene {
       const isEscPhase = pinA?.role === 'esc_phase' || pinB?.role === 'esc_phase';
       const endA = this.getWireEnd(wire.from);
       const endB = this.getWireEnd(wire.to);
-      const exitA = wireExit(a, endA);
-      const exitB = wireExit(b, endB);
-      const pins: V3[] = (wire.waypoints ?? []).map((w) => [w[0], w[1], w[2]]);
-      const chain = [exitA.toArray() as V3, ...pins, exitB.toArray() as V3];
-      let span = 0;
-      for (let i = 0; i < chain.length - 1; i += 1) span += Math.hypot(chain[i + 1]![0] - chain[i]![0], chain[i + 1]![1] - chain[i]![1], chain[i + 1]![2] - chain[i]![2]);
-      const length = wireLengthCm(span, wire.style ?? 'routed', wire.clearanceCm ?? 0.45);
-      const radius = wireRadius(isPower, isEscPhase);
-      // what this wire depends on: its own ends and shape, plus the parts in the space it can hang into
-      const reach = (length - span) / 2 + 1;
-      const lo = [0, 1, 2].map((k) => Math.min(...chain.map((p) => p[k]!)) - reach);
-      const hi = [0, 1, 2].map((k) => Math.max(...chain.map((p) => p[k]!)) + reach);
-      const around = grid.inRegion([lo[0]!, -1, lo[2]!], [hi[0]!, hi[1]! + 20, hi[2]!]);
-      let h = 0;
-      for (const o of around) for (const v of [...o.worldMin, ...o.worldMax]) h = (Math.imul(h, 31) + Math.round(v * 100)) | 0;
-      const key = JSON.stringify([chain.map((p) => p.map(r3)), endA.dir.toArray().map(r3), endB.dir.toArray().map(r3), r3(length), radius, wire.style ?? 'routed', h]);
-      jobs.push({ wire, a, b, endA, endB, exitA, exitB, pins, length, radius, isPower, isEscPhase, key });
+      infos.push({
+        wire,
+        a,
+        b,
+        endA,
+        endB,
+        exitA: wireExit(a, endA).toArray() as V3,
+        exitB: wireExit(b, endB).toArray() as V3,
+        radius: wireRadius(isPower, isEscPhase),
+        isPower,
+        isEscPhase,
+        pins: (wire.waypoints ?? []).map((w) => [w[0], w[1], w[2]] as V3),
+      });
     }
 
-    const solved = new Map<string, V3[]>();
-    for (const job of jobs) {
-      const cached = this.wireCache.get(job.wire.id);
-      if (cached && cached.key === job.key && (cached.quality === 'full' || quality === 'fast')) {
-        solved.set(job.wire.id, cached.points);
-        field.add(cached.points, job.radius);
+    // Wires sharing a pin sit side by side (two wires crimped in one socket, or soldered next to each other on a
+    // pad) instead of on top of each other, ordered by where they go so they do not cross on the way out.
+    interface PinUse {
+      w: WireInfo;
+      atA: boolean;
+    }
+    const atPin = new Map<string, PinUse[]>();
+    for (const w of infos) {
+      for (const use of [
+        { ref: w.wire.from, atA: true },
+        { ref: w.wire.to, atA: false },
+      ]) {
+        const k = `${use.ref.componentId}/${use.ref.pinId}`;
+        const list = atPin.get(k);
+        if (list) list.push({ w, atA: use.atA });
+        else atPin.set(k, [{ w, atA: use.atA }]);
       }
     }
-    for (const job of jobs) {
-      if (solved.has(job.wire.id)) continue;
-      const arched = job.wire.style === 'arched';
-      const points = solveRope({
-        start: job.exitA.toArray() as V3,
-        startDir: job.endA.dir.toArray() as V3,
-        end: job.exitB.toArray() as V3,
-        endDir: job.endB.dir.toArray() as V3,
-        length: job.length,
-        radius: job.radius,
-        grid,
-        floorY: 0,
-        gravity: arched ? 0.15 : 1,
-        stiffness: arched ? 0.97 : 0.88,
-        pins: job.pins,
-        neighbors: field,
-        steps: quality === 'full' ? 180 : 60,
+    const exitOf = (u: PinUse) => (u.atA ? u.w.exitA : u.w.exitB);
+    const farOf = (u: PinUse) => (u.atA ? u.w.exitB : u.w.exitA);
+    const shared: { list: PinUse[]; centre: V3; dir: THREE.Vector3 }[] = [];
+    /** Places the wires of one pin side by side along `side`, in the order given. */
+    const spread = (sorted: PinUse[], centre: V3, side: THREE.Vector3) => {
+      const step = 2 * Math.max(...sorted.map((u) => u.w.radius)) + 0.012;
+      sorted.forEach((u, i) => {
+        const off = side.clone().multiplyScalar((i - (sorted.length - 1) / 2) * step);
+        const exit = exitOf(u);
+        const end = u.atA ? u.w.endA : u.w.endB;
+        const tip = u.atA ? u.w.a : u.w.b;
+        const prev = new THREE.Vector3(exit[0] - centre[0], exit[1] - centre[1], exit[2] - centre[2]);
+        for (let k = 0; k < 3; k += 1) exit[k] = centre[k]! + off.getComponent(k);
+        if (end.contact === 'lead') tip.add(off.clone().sub(prev));
       });
-      solved.set(job.wire.id, points);
-      field.add(points, job.radius);
-      this.wireCache.set(job.wire.id, { key: job.key, points, quality });
+    };
+    for (const list of atPin.values()) {
+      if (list.length < 2) continue;
+      const head = list[0]!;
+      const exit0 = exitOf(head);
+      const dir = (head.atA ? head.w.endA : head.w.endB).dir;
+      const toward = new THREE.Vector3();
+      for (const u of list) toward.add(new THREE.Vector3(farOf(u)[0] - exit0[0], 0, farOf(u)[2] - exit0[2]));
+      const side = new THREE.Vector3().crossVectors(dir, toward.lengthSq() > 1e-6 ? toward : new THREE.Vector3(1, 0, 0));
+      if (side.lengthSq() < 1e-8) side.crossVectors(dir, new THREE.Vector3(0, 0, 1));
+      side.normalize();
+      const along = (u: PinUse) => (farOf(u)[0] - exit0[0]) * side.x + (farOf(u)[1] - exit0[1]) * side.y + (farOf(u)[2] - exit0[2]) * side.z;
+      const centre: V3 = [exit0[0], exit0[1], exit0[2]];
+      shared.push({ list, centre, dir });
+      spread([...list].sort((p, q) => along(p) - along(q)), centre, side);
     }
-    const live = new Set(jobs.map((j) => j.wire.id));
-    for (const id of [...this.wireCache.keys()]) if (!live.has(id)) this.wireCache.delete(id);
 
-    for (const job of jobs) {
+    // "Natural" wires lie on the deck where they can; a jumper between two pins of one part is a small bridge, and the
+    // rest hang as they are (wireRope.ts)
+    const natural = (w: WireInfo) => (w.wire.style ?? 'routed') === 'routed' && w.pins.length === 0 && !w.isEscPhase;
+    const deckWires = infos.filter((w) => natural(w) && Math.hypot(w.exitB[0] - w.exitA[0], w.exitB[2] - w.exitA[2]) >= 1.5 && w.wire.from.componentId !== w.wire.to.componentId);
+    let partsHash = 0;
+    for (const o of grid.all) for (const v of [...o.worldMin, ...o.worldMax]) partsHash = (Math.imul(partsHash, 31) + Math.round(v * 100)) | 0;
+    // the finished paths are kept: with the same wires and parts (selecting, hovering) the wires are only redrawn
+    const finalKey = JSON.stringify([infos.map((w) => [w.wire.id, w.exitA.map(r3), w.exitB.map(r3), w.endA.dir.toArray().map(r3), w.endB.dir.toArray().map(r3), w.radius, w.wire.style ?? 'routed', w.wire.clearanceCm ?? 0.45, w.pins]), partsHash]);
+    const kept = this.finalCache && this.finalCache.key === finalKey && (this.finalCache.quality === 'full' || quality === 'fast') ? this.finalCache : null;
+    const layAll = (): Map<string, V3[]> => {
+      let routes = new Map<string, DeckRoute>();
+      if (deckWires.length > 0) {
+        const key = JSON.stringify([deckWires.map((w) => w.wire.id), infos.map((w) => [w.exitA.map(r3), w.exitB.map(r3), w.radius, w.pins]), partsHash]);
+        if (this.deckCache?.key === key) routes = this.deckCache.routes;
+        else {
+          const pitch = 0.254; // one lane per 2.54 mm, like the header pins the wires come from
+          const ends = deckWires.flatMap((w) => [w.exitA, w.exitB]);
+          const x0 = Math.min(...ends.map((p) => p[0])) - 2.5;
+          const z0 = Math.min(...ends.map((p) => p[2])) - 2.5;
+          const nx = Math.min(400, Math.ceil((Math.max(...ends.map((p) => p[0])) + 2.5 - x0) / pitch) + 1);
+          const nz = Math.min(400, Math.ceil((Math.max(...ends.map((p) => p[2])) + 2.5 - z0) / pitch) + 1);
+          const deck = makeDeckGrid(x0, z0, nx, nz, pitch, (dx, dz) => grid.heightField(x0 + dx, z0 + dz, nx, nz, pitch, 0), ends);
+          // a wire attached far above the deck (a battery lead on top of a quad) does not dive down to it and back
+          const routable = deckWires.filter((w) => Math.max(w.exitA[1], w.exitB[1]) - deck.deckY <= 3);
+          routes = routeDeck(
+            deck,
+            routable.map((w) => ({
+              id: w.wire.id,
+              a: w.exitA,
+              b: w.exitB,
+              aDir: w.endA.dir.toArray() as V3,
+              bDir: w.endB.dir.toArray() as V3,
+              radius: w.radius,
+              group: [w.wire.from.componentId, w.wire.to.componentId].sort().join('|'),
+            })),
+            { attempts: quality === 'full' ? 4 : 1, keepOut: infos.filter((w) => !deckWires.includes(w)).flatMap((w) => [w.exitA, w.exitB, ...w.pins]) },
+          );
+          this.deckCache = { key, routes };
+        }
+      }
+
+      // Natural wires are laid as a dressed board would be: the runs on the deck first, then the pieces that come down
+      // from each socket onto its run, and short jumpers as small bridges between their sockets. Pieces go down shortest
+      // first, each at the lowest height that keeps it clear of every wire already laid, so a longer one passes over.
+      const solved = new Map<string, V3[]>();
+      const runs = new Set<string>();
+      const NEXT = 0.3;
+      const surface = (x: number, z: number) => grid.surfaceY(x, z, 0);
+      const laid: { w: WireInfo; run: V3[]; s: number[]; total: number; middle: V3[] }[] = [];
+      for (const w of infos) {
+        const route = routes.get(w.wire.id);
+        if (!route) continue;
+        const s = arcLengths3(route.run);
+        const total = s[s.length - 1]!;
+        if (total < 2 * NEXT + 0.2) continue;
+        laid.push({ w, run: route.run, s, total, middle: route.run.filter((_, k) => s[k]! > NEXT + 0.02 && s[k]! < total - NEXT - 0.02) });
+        runs.add(w.wire.id);
+      }
+      // Wires sharing a pin now know where they come down: they sit one behind the other along that way, the one landing
+      // nearest in front, and each one behind bends over a little higher, so it passes over the one in front of it.
+      const landingOf = (u: PinUse): V3 => {
+        const l = laid.find((x) => x.w === u.w);
+        if (!l) return farOf(u);
+        return u.atA ? l.run[0]! : l.run[l.run.length - 1]!;
+      };
+      const baseLift = new Map<string, number>();
+      for (const { list, centre } of shared) {
+        const down = new THREE.Vector3();
+        for (const u of list) down.add(new THREE.Vector3(landingOf(u)[0] - centre[0], 0, landingOf(u)[2] - centre[2]).normalize());
+        if (down.lengthSq() < 1e-6) continue;
+        down.normalize();
+        const reach = (u: PinUse) => Math.hypot(landingOf(u)[0] - centre[0], landingOf(u)[2] - centre[2]);
+        const nearFirst = [...list].sort((p, q) => reach(p) - reach(q));
+        spread([...nearFirst].reverse(), centre, down);
+        nearFirst.forEach((u, rank) => baseLift.set(`${u.w.wire.id}:${u.atA ? 'a' : 'b'}`, rank * 0.2));
+      }
+
+      interface Piece {
+        w: WireInfo;
+        span: number;
+        base: number;
+        shape: (lift: number) => V3[];
+        /** Points that may touch other wires' ends (the tail lying on the wire's own run) are left out of the check. */
+        checked: (pts: V3[]) => V3[];
+        done: (pts: V3[]) => void;
+      }
+      const pieces: Piece[] = [];
+      const ends = new Map<string, { a?: V3[]; b?: V3[] }>();
+      const hspan = (p: V3, q: V3) => Math.hypot(q[0] - p[0], q[2] - p[2]);
+      for (const { w, run, s, total } of laid) {
+        for (const atA of [true, false]) {
+          const exit = atA ? w.exitA : w.exitB;
+          const dir = (atA ? w.endA : w.endB).dir.toArray() as V3;
+          const land = atA ? run[0]! : run[run.length - 1]!;
+          const next = pointAlong(run, s, atA ? NEXT : total - NEXT).p;
+          const nearLand = (p: V3) => p[1] > land[1] + 0.25 || hspan(p, land) > 0.45;
+          pieces.push({
+            w,
+            span: hspan(exit, land),
+            base: baseLift.get(`${w.wire.id}:${atA ? 'a' : 'b'}`) ?? 0,
+            shape: (lift) => shapeDrop(exit, dir, land, next, w.radius, surface, lift),
+            checked: (pts) => pts.slice(2).filter(nearLand),
+            done: (pts) => {
+              const e = ends.get(w.wire.id) ?? {};
+              if (atA) e.a = pts;
+              else e.b = pts;
+              ends.set(w.wire.id, e);
+            },
+          });
+        }
+      }
+      for (const w of infos) {
+        if (runs.has(w.wire.id) || !natural(w) || w.wire.from.componentId !== w.wire.to.componentId) continue;
+        const aDir = w.endA.dir.toArray() as V3;
+        const bDir = w.endB.dir.toArray() as V3;
+        pieces.push({
+          w,
+          span: hspan(w.exitA, w.exitB),
+          base: Math.max(baseLift.get(`${w.wire.id}:a`) ?? 0, baseLift.get(`${w.wire.id}:b`) ?? 0),
+          shape: (lift) => shapeBridge(w.exitA, aDir, w.exitB, bDir, w.radius, surface, lift),
+          checked: (pts) => pts.slice(2, -2),
+          done: (pts) => solved.set(w.wire.id, pts),
+        });
+      }
+      // A piece whose straight rise out of its socket would pass through one laid before it cannot be cleared by going
+      // higher; then it goes first in later rounds and the other one passes over it. The best round is kept.
+      const LIFTS = [0, 0.16, 0.32, 0.48, 0.66, 0.86, 1.1, 1.4];
+      const bySpan = [...pieces].sort((p, q) => p.span - q.span);
+      let order = bySpan;
+      const promoted: Piece[] = [];
+      let best: { field: NeighborField; shapes: Map<Piece, V3[]>; stuck: Piece[] } | null = null;
+      for (let round = 0; round < 6; round += 1) {
+        const f = new NeighborField();
+        for (const l of laid) f.add(l.middle, l.w.radius);
+        const shapes = new Map<Piece, V3[]>();
+        const stuck: Piece[] = [];
+        for (const piece of order) {
+          let pts: V3[] = [];
+          let clear = false;
+          for (const lift of LIFTS) {
+            pts = piece.shape(piece.base + lift);
+            if (!f.overlaps(piece.checked(pts), piece.w.radius)) {
+              clear = true;
+              break;
+            }
+          }
+          if (!clear) {
+            pts = piece.shape(piece.base);
+            stuck.push(piece);
+          }
+          f.add(pts, piece.w.radius);
+          shapes.set(piece, pts);
+        }
+        if (!best || stuck.length < best.stuck.length) best = { field: f, shapes, stuck };
+        if (stuck.length === 0) break;
+        for (const p of stuck) if (!promoted.includes(p)) promoted.push(p);
+        const first = new Set(promoted);
+        order = [...promoted, ...bySpan.filter((p) => !first.has(p))];
+      }
+      for (const [piece, pts] of best!.shapes) piece.done(pts);
+      field.merge(best!.field);
+      for (const { w, middle } of laid) {
+        const e = ends.get(w.wire.id)!;
+        solved.set(w.wire.id, [...e.a!, ...middle, ...[...e.b!].reverse()]);
+      }
+
+      // Tight and arched wires, wires routed by hand, ESC looms and natural wires that could not lie on the deck hang
+      // on their own, resting on what is under them
+      for (const w of infos) {
+        if (solved.has(w.wire.id)) continue;
+        const arched = w.wire.style === 'arched';
+        const chain = [w.exitA, ...w.pins, w.exitB];
+        const plan = planWire(chain, w.wire.style ?? 'routed', w.wire.clearanceCm ?? 0.45, grid);
+        const key = JSON.stringify([chain.map((pt) => pt.map(r3)), w.endA.dir.toArray().map(r3), w.endB.dir.toArray().map(r3), r3(plan.length), w.radius, w.wire.style ?? 'routed', regionHash(chain, plan.length / 4 + 1)]);
+        const points = cachedSolve(w.wire.id, key, {
+          start: w.exitA,
+          startDir: w.endA.dir.toArray() as V3,
+          end: w.exitB,
+          endDir: w.endB.dir.toArray() as V3,
+          length: plan.length,
+          legSlack: plan.legSlack,
+          radius: w.radius,
+          gravity: arched ? 0.15 : 1,
+          stiffness: arched ? 0.97 : 0.88,
+          pins: w.pins,
+          neighbors: field,
+        });
+        solved.set(w.wire.id, points);
+        field.add(points, w.radius);
+      }
+      // last check: wherever two wires still touch, the more level one is lifted over the other
+      const ordered = infos.filter((w) => solved.has(w.wire.id));
+      const dense = ordered.map((w) => densify(solved.get(w.wire.id)!));
+      separateWires(dense, ordered.map((w) => w.radius));
+      ordered.forEach((w, k) => solved.set(w.wire.id, dense[k]!));
+      for (const id of [...this.wireCache.keys()]) if (!live.has(id)) this.wireCache.delete(id);
+      return solved;
+    };
+    let solved: Map<string, V3[]>;
+    if (kept) {
+      solved = kept.paths;
+      for (const w of infos) {
+        const tips = kept.tips.get(w.wire.id);
+        if (tips) {
+          w.a.copy(tips[0]);
+          w.b.copy(tips[1]);
+        }
+      }
+    } else {
+      solved = layAll();
+      this.finalCache = { key: finalKey, quality, paths: solved, tips: new Map(infos.map((w) => [w.wire.id, [w.a.clone(), w.b.clone()] as [THREE.Vector3, THREE.Vector3]])) };
+    }
+
+    for (const w of infos) {
       this.wireRoot.add(
-        buildWireGroup(solved.get(job.wire.id) ?? [], job.a, job.b, {
-          wireId: job.wire.id,
-          fromEnd: job.endA,
-          toEnd: job.endB,
-          color: job.wire.color,
-          selected: job.wire.id === this.selectedWireId,
-          isPower: job.isPower,
-          isEscPhase: job.isEscPhase,
-          waypoints: job.wire.waypoints,
+        buildWireGroup(solved.get(w.wire.id) ?? [], w.a, w.b, {
+          wireId: w.wire.id,
+          fromEnd: w.endA,
+          toEnd: w.endB,
+          color: w.wire.color,
+          selected: w.wire.id === this.selectedWireId,
+          isPower: w.isPower,
+          isEscPhase: w.isEscPhase,
+          waypoints: w.wire.waypoints,
         }),
       );
     }

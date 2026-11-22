@@ -67,23 +67,25 @@ All 23 components are defined in `src/catalog/partsCatalog.ts` (real dimensions 
 
 ---
 
-## 4. Wires That Hang Like Real Jumper Wires (`wireRope.ts`, `wireGeometry.ts`)
+## 4. Wiring Dressed Like a Hand-Wired Board (`wireDeckRouter.ts`, `wireRope.ts`, `wireGeometry.ts`)
 
 ![Close-Up of the rover's wiring](assets/01b_rover_closeup_wiring.png)
 
-### 4.1 How a wire is laid
-Each wire is solved as a light rope (`src/viewport/wireRope.ts`), then drawn as a smooth tube:
-- **Fixed ends with a straight stub.** The wire starts at the top of its DuPont socket (or the end of the heat-shrink on a soldered lead) and leaves it straight for about 6 mm, the way a crimped jumper does, before it can bend.
-- **Gravity, length and bend limits.** A chain of points of fixed length is pulled down by gravity; distance constraints keep its length, and a bending constraint keeps it from folding sharper than a 22 AWG wire can. A final settling pass with gravity off brings it back to its exact length.
-- **It rests on what is under it.** Collisions use oriented boxes taken from the parts' own meshes (rotated parts included), so a wire lies on the deck, drapes over a board or the battery, and is never tucked under something sitting on the bench. Parts under 2.5 mm (chip resistors) and thin leads are ignored, as a wire would simply lie over them.
-- **Wires stack instead of crossing through each other.** Wires already laid are obstacles for the next one.
-- **Length you could cut.** The slack comes from `src/engine/wireLength.ts`, the same rule behind the inspector's cable length and the cut list.
+### 4.1 How a natural wire is laid
+"Natural" wires (the default) are dressed flat on the deck, the way a tidy hand-wired board looks:
+- **Lanes 2.54 mm apart.** The deck under the parts is a grid of lanes with the same pitch as header pins. `makeDeckGrid` finds the deck by itself (the rover's chassis plate, or the bench for parts laid out on it) and keeps every lane clear of the sides of parts and of the deck edge.
+- **Straight runs, square corners, bundles.** `routeDeck` lays each wire's run along the chassis axes with rounded corners (A* search over lanes, with a cost for each corner and each crossing). Wires going the same way end up side by side as a bundle.
+- **No wire ever passes through another.** A lane used along X can only be crossed along Z, never followed, and no wire turns where another lies. Where a wire crosses others it lifts over them; crossings close together merge into one lift, so a wire crossing a bundle lifts once instead of rippling. If no free lane is left, a wire lies on top of the bundle it follows rather than through it. Lanes also keep off the joints of other wires near the deck (capacitor legs, battery leads, hand-placed clips).
+- **Neat ends.** Each end rises straight out of its socket, bends over and comes down beside the part onto its run. Pins in a row land on neighbouring lanes in the same order, so wires leave a header side by side. Wires sharing one pin sit one behind the other in the socket or on the pad, each bending over a little higher than the one in front, and any two ends whose paths would cross swap landings.
+- **Short jumpers** between two pins of the same part are small square bridges over the header.
+- **Last check.** After everything is laid, `separateWires` measures every pair of wires; where two still touch, the more level one is lifted over the other (or eased aside if both rise side by side). Socket ends never move. On the rover, room mapper, fault lab and quad presets no two wires touch.
 
 ### 4.2 Styles, tie points and speed
-- **Natural** (default) hangs with some slack and rests on the bench and parts; **Tight** is pulled almost straight; **Arched** is a stiff formed jumper that holds an arch. **Lay out again** changes the slack.
-- **Route by hand:** click parts or the deck to place adhesive cable clips (`waypoints: Vec3[]`); the wire passes through each clip.
-- **ESC phase leads** are drawn as a loosely twisted three-wire loom (one turn every ~3 cm) along the same solved path.
-- Solved paths are cached per wire and reused until the wire's ends, style or the parts around it change, so selecting a wire never re-solves. Dragging a part re-solves only nearby wires with a quick pass and the full pass runs on drop. Laying all 37 wires of the rover preset takes about 0.2 s once when it loads.
+- **Natural** (default) is laid flat in lanes as above. **Tight** is a jumper pulled almost straight; **Arched** is a stiff formed jumper that holds an arch. Both hang as a light rope (`wireRope.ts`): fixed straight stubs at the sockets, gravity, length and bend limits, tethers that keep a long wire from stretching, collisions with the parts' own oriented boxes, and the wires already laid as obstacles. **Lay out again** changes their slack.
+- **Route by hand:** click parts or the deck to place adhesive cable clips (`waypoints: Vec3[]`); the wire hangs through each clip.
+- **ESC phase leads** are drawn as a loosely twisted three-wire loom (one turn every ~3 cm), and natural wires attached far above the deck (a quad's battery leads) hang the same way instead of diving down to it.
+- Finished paths are cached and reused until a wire's ends, style or the parts around it change, so selecting a wire only redraws. Laying all 37 wires of the rover preset takes about 0.1 s on this machine; dragging a part uses one quick routing pass per frame and the full pass runs on drop.
+- The inspector's cable length is an estimate from the straight distance between the ends; a dressed wire is longer.
 
 ### 4.3 DuPont sockets and solder joints
 - **DuPont female housings** on header pins: a 2.5 x 2.5 x 14 mm black sleeve over the pin with the latch window and the crimp where the wire leaves.
