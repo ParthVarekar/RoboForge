@@ -14,6 +14,10 @@ import {
   gy521PinTip,
   hcsr04PinTip,
   MM,
+  LCD1602_I2C,
+  LCD2004_I2C,
+  lcdPinTip,
+  type LcdModuleGeometry,
   OLED_096,
   oledPinTip,
 } from './boardGeometry';
@@ -59,6 +63,7 @@ export type PartCategory =
   | 'Controllers'
   | 'Drivers'
   | 'Sensors'
+  | 'Displays'
   | 'Actuators'
   | 'Power'
   | 'Passives'
@@ -135,6 +140,34 @@ function makeEsp32Pins(): PinSpec[] {
   });
   return [...leftSpecs.map((p, i) => toPin(p, 'left', i)), ...rightSpecs.map((p, i) => toPin(p, 'right', i))];
 }
+
+/** A character LCD with the PCF8574 backpack: four pins on the right-angle header pointing west. */
+function lcdSpec(
+  kind: 'lcd1602_i2c' | 'lcd2004_i2c',
+  g: LcdModuleGeometry,
+  o: Pick<PartSpec, 'name' | 'shortName' | 'description' | 'massGrams' | 'unitPriceUsd' | 'roboforgePartId'>,
+): PartSpec {
+  const west: [number, number, number] = [-1, 0, 0];
+  return {
+    kind,
+    category: 'Displays',
+    simulated: true,
+    // logic and backpack about 2 mA; the white LED backlight draws most of it
+    idleCurrentMa: 25,
+    peakCurrentMa: 30,
+    sizeCm: [g.wMm * MM, (g.boardBottomMm + PCB_T_MM_CAT + g.bezel.h) * MM, g.dMm * MM],
+    defaultColor: '#1f7a3a',
+    ...o,
+    pins: [
+      { id: 'GND', label: 'GND', role: 'gnd', localPos: lcdPinTip(g, 0), dir: west, nominalVoltage: 0 },
+      { id: 'VCC', label: 'VCC (5V)', role: 'power_in', localPos: lcdPinTip(g, 1), dir: west, maxVoltage: 5.5 },
+      { id: 'SDA', label: 'SDA (pulled up to VCC)', role: 'i2c_sda', localPos: lcdPinTip(g, 2), dir: west, maxVoltage: 5.5 },
+      { id: 'SCL', label: 'SCL (pulled up to VCC)', role: 'i2c_scl', localPos: lcdPinTip(g, 3), dir: west, maxVoltage: 5.5 },
+    ],
+  };
+}
+
+const PCB_T_MM_CAT = 1.6;
 
 export const PARTS_CATALOG: Record<ComponentKind, PartSpec> = {
   esp32_devkit: {
@@ -259,8 +292,8 @@ export const PARTS_CATALOG: Record<ComponentKind, PartSpec> = {
     kind: 'oled_ssd1306',
     name: '0.96" OLED I2C Display',
     shortName: 'OLED 0.96"',
-    category: 'Sensors',
-    description: '128x64 SSD1306 I2C screen. Renders live telemetry & oled.println() directly in 3D.',
+    category: 'Displays',
+    description: '128x64 SSD1306 I2C screen at address 0x3C (yellow top band, blue below). Shows what the sketch draws with the Adafruit_SSD1306 library, or the oled.println() shortcut.',
     massGrams: 5,
     unitPriceUsd: 4.5,
     simulated: true,
@@ -276,6 +309,22 @@ export const PARTS_CATALOG: Record<ComponentKind, PartSpec> = {
       { id: 'SDA', label: 'SDA', role: 'i2c_sda', localPos: oledPinTip(3), maxVoltage: 3.6 },
     ],
   },
+  lcd1602_i2c: lcdSpec('lcd1602_i2c', LCD1602_I2C, {
+    name: '16x2 Character LCD (I2C backpack)',
+    shortName: 'LCD 16x2',
+    description: 'HD44780 1602 LCD, blue with white backlight, on a PCF8574T I2C backpack at 0x27. Made for 5 V. Drive it with LiquidCrystal_I2C: lcd.init(), lcd.backlight(), lcd.print().',
+    massGrams: 35,
+    unitPriceUsd: 3.2,
+    roboforgePartId: 'lcd1602_i2c',
+  }),
+  lcd2004_i2c: lcdSpec('lcd2004_i2c', LCD2004_I2C, {
+    name: '20x4 Character LCD (I2C backpack)',
+    shortName: 'LCD 20x4',
+    description: 'HD44780 2004 LCD, blue with white backlight, on a PCF8574T I2C backpack at 0x27. Made for 5 V. Rows 0-3; text past column 19 of row 0 continues on row 2, as on the real controller.',
+    massGrams: 62,
+    unitPriceUsd: 5.5,
+    roboforgePartId: 'lcd2004_i2c',
+  }),
   esp32_cam: {
     kind: 'esp32_cam',
     name: 'ESP32-CAM (GC2145)',
@@ -613,6 +662,7 @@ export const PART_CATEGORIES: PartCategory[] = [
   'Controllers',
   'Drivers',
   'Sensors',
+  'Displays',
   'Actuators',
   'Power',
   'Passives',

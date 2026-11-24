@@ -1,4 +1,4 @@
-import { HAL_API, HAL_AWAITED, HAL_NAMES, HAL_UNAVAILABLE, halEntry } from './halApi';
+import { HAL_API, HAL_AWAITED, HAL_CLASSES, HAL_NAMES, HAL_UNAVAILABLE, INCLUDE_ADVICE, KNOWN_INCLUDES, halClass, halEntry } from './halApi';
 
 /**
  * Translates the Arduino/ESP32 C++ subset the virtual ESP32 runs into an async JavaScript module body.
@@ -429,6 +429,21 @@ const UNSUPPORTED: Array<[RegExp, string]> = [
   [/\b(?:int|long|float|double|char|byte|bool|uint8_t|uint16_t|uint32_t|int16_t|int32_t|String|void)\s*\*\s*[A-Za-z_(]/, 'pointers are not supported by the simulator; use arrays and indexes'],
 ];
 
+/** Library classes a sketch can declare objects of (Adafruit_SSD1306, LiquidCrystal_I2C). */
+const LIB_CLASSES = new Set(HAL_CLASSES.map((c) => c.name));
+
+/** `&name` as a call argument. Only `&Wire` (the I2C bus) and a GFX font such as `&FreeSans9pt7b` are understood. */
+const ADDRESS_OF = /([(,]\s*)&(?!&)\s*([A-Za-z_]\w*)/g;
+const isFontName = (n: string) => /pt\d+b$|^(?:Org_01|Picopixel|TomThumb)$/.test(n);
+
+/** Objects the sketch declares from a library class: name -> class. */
+function findLibraryObjects(masked: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const re = new RegExp(`(?:^|[;{}\\n])[ \\t]*(?:static\\s+)?(${[...LIB_CLASSES].join('|')})\\s+([A-Za-z_]\\w*)\\s*[(;=]`, 'g');
+  for (const m of masked.matchAll(re)) out.set(m[2]!, m[1]!);
+  return out;
+}
+
 function checkBrackets(masked: string, starts: number[]): SketchProblem | null {
   const stack: Array<{ ch: string; idx: number }> = [];
   for (let i = 0; i < masked.length; i += 1) {
@@ -496,7 +511,7 @@ function checkSemicolons(masked: string): SketchProblem[] {
   return out;
 }
 
-function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: ReadonlySet<string>): SketchProblem[] {
+function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: ReadonlySet<string>, libObjects: ReadonlyMap<string, string>): SketchProblem[] {
   const starts = lineStarts(masked);
   const problems: SketchProblem[] = [];
   const lines = masked.split('\n');
@@ -510,6 +525,22 @@ function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: Re
       }
     }
   });
+
+  for (const am of masked.matchAll(ADDRESS_OF)) {
+    const name = am[2]!;
+    if (name === 'Wire' || isFontName(name)) continue;
+    const at = (am.index ?? 0) + am[1]!.length;
+    const pos = posOf(starts, at);
+    const lineText = lines[pos.line - 1] ?? '';
+    problems.push({
+      ...pos,
+      endColumn: pos.column + name.length + 1,
+      message: /getTextBounds\s*\(/.test(lineText)
+        ? 'getTextBounds() returns its results through pointers (&x1, &w ...), which the simulator does not support; with the built-in font each character is 6 x 8 pixels times the text size'
+        : `passing '${name}' by address (&${name}) is not supported by the simulator; use a global variable or a return value instead`,
+      severity: 'error',
+    });
+  }
 
   const bracket = checkBrackets(masked, starts);
   if (bracket) problems.push(bracket);
@@ -539,7 +570,7 @@ function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: Re
   if (!bracket) problems.push(...checkSemicolons(masked));
 
   // calls to names that are not declared, and members the simulator's objects do not have
-  const callable = new Set<string>([...HAL_API.filter((e) => e.kind === 'function').map((e) => e.name), ...Object.keys(HAL_AWAITED), ...userFns, ...JS_ALLOWED_CALLS]);
+  const callable = new Set<string>([...HAL_API.filter((e) => e.kind === 'function').map((e) => e.name), ...Object.keys(HAL_AWAITED), ...userFns, ...JS_ALLOWED_CALLS, ...LIB_CLASSES]);
   const callRe = /([A-Za-z_]\w*)\s*\(/g;
   let m: RegExpExecArray | null;
   while ((m = callRe.exec(masked))) {
@@ -549,7 +580,7 @@ function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: Re
     while (b >= 0 && /\s/.test(masked[b]!)) b -= 1;
     if (masked[b] === '.') continue;
     const prevWord = /([A-Za-z_]\w*)\s*[*&]?\s*$/.exec(masked.slice(Math.max(0, idx - 40), idx))?.[1];
-    if (prevWord && (TYPE_WORDS.has(prevWord) || prevWord === 'function')) continue;
+    if (prevWord && (TYPE_WORDS.has(prevWord) || prevWord === 'function' || LIB_CLASSES.has(prevWord))) continue;
     if (KEYWORDS.has(name) || callable.has(name)) {
       if (name === 'sizeof') {
         const idiom = /^sizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\1\s*\[\s*0\s*\]\s*\)/.exec(masked.slice(idx));
@@ -573,20 +604,30 @@ function staticChecks(masked: string, userFns: ReadonlySet<string>, userVars: Re
       severity: 'error',
     });
   }
-  const memberRe = /\b(Serial|imu|oled)\s*\.\s*([A-Za-z_]\w*)/g;
-  while ((m = memberRe.exec(masked))) {
-    const obj = halEntry(m[1]!);
+  const objectNames = ['Serial', 'imu', 'oled', 'Wire', ...libObjects.keys()];
+  const memberRe = new RegExp(`(?<![\\w.])(${[...new Set(objectNames)].join('|')})\\s*\\.\\s*([A-Za-z_]\\w*)`, 'g');
+  // preprocessor lines (#include <Wire.h>) are not member accesses
+  const noDirectives = masked.replace(/^[ \t]*#[^\n]*/gm, (s) => ' '.repeat(s.length));
+  while ((m = memberRe.exec(noDirectives))) {
+    const objName = m[1]!;
+    const libClass = libObjects.get(objName);
+    const obj = libClass ? halClass(libClass) : halEntry(objName);
     const member = m[2]!;
     if (!obj?.members?.some((x) => x.name === member)) {
       const at = m.index + m[0].length - member.length;
       const p = posOf(starts, at);
+      const why = HAL_UNAVAILABLE[member];
       problems.push({
         ...p,
         endColumn: p.column + member.length,
         message:
-          m[1] === 'Serial' && member === 'read'
+          objName === 'Serial' && member === 'read'
             ? "'Serial.read()' is not modelled: use Serial.readStringUntil('\\n') to read a line"
-            : `'${m[1]}' has no member named '${member}'${suggest(member, (obj?.members ?? []).map((x) => x.name))}`,
+            : objName === 'Wire' && ['read', 'requestFrom', 'available'].includes(member)
+              ? `'Wire.${member}()' is not modelled: raw I2C reads are not simulated; read the MPU6050 with the imu object`
+              : why
+                ? `'${member}' is not available in the simulator: ${why}`
+                : `'${objName}' has no member named '${member}'${suggest(member, (obj?.members ?? []).map((x) => x.name))}`,
         severity: 'error',
       });
     }
@@ -648,6 +689,130 @@ function transformDirectives(text: string): string {
     .join('\n');
 }
 
+/**
+ * Library objects: `Adafruit_SSD1306 display(128, 64, &Wire, -1);` becomes `const display = Adafruit_SSD1306(128,
+ * 64, Wire, -1);` (also the `= Class(args)` and no-argument forms); `&Wire` becomes the bus object and
+ * `&FreeSans9pt7b` the font's name.
+ */
+function transformLibraryObjects(text: string): string {
+  const masked = maskLiterals(text);
+  const edits: Edit[] = [];
+  const re = new RegExp(`(^|[;{}\\n])([ \\t]*)((?:static\\s+)?)(${[...LIB_CLASSES].join('|')})(\\s+)([A-Za-z_]\\w*)\\s*`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(masked))) {
+    const start = m.index + m[1]!.length + m[2]!.length;
+    let i = m.index + m[0].length;
+    const cls = m[4]!;
+    const name = m[6]!;
+    let args = '';
+    if (masked[i] === '=') {
+      i += 1;
+      while (/\s/.test(masked[i] ?? '')) i += 1;
+      if (masked.startsWith(cls, i)) i += cls.length;
+      while (/\s/.test(masked[i] ?? '')) i += 1;
+    }
+    if (masked[i] === '(') {
+      const close = matchClose(masked, i);
+      if (close < 0) continue;
+      args = text.slice(i + 1, close);
+      i = close + 1;
+    }
+    while (/[ \t]/.test(masked[i] ?? '')) i += 1;
+    if (masked[i] !== ';') continue;
+    const original = text.slice(start, i + 1);
+    edits.push({ start, end: i + 1, text: `const ${name} = ${cls}(${args.replace(/\n/g, ' ')});${keepNewlines(original)}` });
+    re.lastIndex = i + 1;
+  }
+  let out = applyEdits(text, edits);
+  const masked2 = maskLiterals(out);
+  const amp: Edit[] = [];
+  for (const am of masked2.matchAll(ADDRESS_OF)) {
+    const name = am[2]!;
+    const at = (am.index ?? 0) + am[1]!.length;
+    const end = at + masked2.slice(at).indexOf(name) + name.length;
+    if (name === 'Wire') amp.push({ start: at, end, text: 'Wire' });
+    else if (isFontName(name)) amp.push({ start: at, end, text: `"${name}"` });
+  }
+  out = applyEdits(out, amp);
+  return out;
+}
+
+/** Non-ASCII characters in string literals become their UTF-8 bytes (\xNN), as the C++ compiler stores them. */
+function transformStringBytes(text: string): string {
+  let out = '';
+  let q = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i]!;
+    if (q) {
+      if (c === '\\' && i + 1 < text.length) {
+        out += c + text[i + 1];
+        i += 1;
+        continue;
+      }
+      if (c === q || c === '\n') q = '';
+      const cp = c.codePointAt(0) ?? 0;
+      if (q === '"' && cp > 0x7f) {
+        const ch = String.fromCodePoint(cp);
+        for (const byte of new TextEncoder().encode(ch)) out += `\\x${byte.toString(16).padStart(2, '0')}`;
+        if (cp > 0xffff) i += 1;
+        continue;
+      }
+      out += c;
+      continue;
+    }
+    if (c === '"' || c === "'") q = c;
+    out += c;
+  }
+  return out;
+}
+
+/** Warnings for `#include`s the simulator does not provide. */
+function includeWarnings(stripped: string): SketchProblem[] {
+  const out: SketchProblem[] = [];
+  stripped.split('\n').forEach((line, i) => {
+    const m = /^(\s*)#\s*include\s*[<"]([^>"]+)[>"]/.exec(line);
+    if (!m) return;
+    const header = m[2]!.trim();
+    if (KNOWN_INCLUDES.has(header) || header.startsWith('Fonts/')) return;
+    const advice = INCLUDE_ADVICE[header];
+    out.push({
+      line: i + 1,
+      column: m[1]!.length + 1,
+      endColumn: line.trimEnd().length + 1,
+      message: advice
+        ? `<${header}>: ${advice}`
+        : `<${header}> is not part of the simulator; only the ESP32 core, Wire, Adafruit_SSD1306 (Adafruit_GFX) and LiquidCrystal_I2C are available, so calls into it will fail`,
+      severity: 'warning',
+    });
+  });
+  return out;
+}
+
+/** A display draws a string's bytes, so "°" (two UTF-8 bytes) shows as two other symbols; say how to get the symbol. */
+function displayTextWarnings(stripped: string, displayObjects: readonly string[]): SketchProblem[] {
+  if (!displayObjects.length) return [];
+  const out: SketchProblem[] = [];
+  // only text handed to a display's print/write call (Serial shows UTF-8 fine)
+  const call = new RegExp(`\\b(?:${displayObjects.join('|')})\\s*\\.\\s*(?:print|println|write|printstr)\\s*\\(\\s*(?:F\\s*\\(\\s*)?$`);
+  stripped.split('\n').forEach((line, i) => {
+    const m = /"(?:[^"\\\n]|\\.)*"/g;
+    for (const s of line.matchAll(m)) {
+      const k = s[0].search(/[\u0080-￿]/);
+      if (k < 0 || !call.test(line.slice(0, s.index ?? 0))) continue;
+      const ch = String.fromCodePoint(s[0].codePointAt(k) ?? 63);
+      out.push({
+        line: i + 1,
+        column: (s.index ?? 0) + k + 1,
+        endColumn: (s.index ?? 0) + k + 2,
+        message: `'${ch}' is not plain ASCII: a display draws its UTF-8 bytes as other symbols.${ch === '\u00b0' ? ' For the degree sign write (char)247 on the OLED or (char)223 on the LCD.' : ''}`,
+        severity: 'warning',
+      });
+      if (out.length >= 3) return;
+    }
+  });
+  return out;
+}
+
 function transformLiterals(text: string): string {
   const masked = maskLiterals(text);
   const edits: Edit[] = [];
@@ -659,6 +824,9 @@ function transformLiterals(text: string): string {
   }
   const iRe = /\b(0[xX][0-9a-fA-F]+|0[bB][01]+|\d+)(?:[uU][lL]{0,2}|[lL]{1,2}[uU]?)\b/g;
   while ((m = iRe.exec(masked))) edits.push({ start: m.index, end: m.index + m[0].length, text: m[1]! });
+  // Arduino's binary constants B0 .. B11111111 (used for custom LCD characters and bitmaps)
+  const bRe = /(?<![\w.$])B([01]{1,8})\b/g;
+  while ((m = bRe.exec(masked))) edits.push({ start: m.index, end: m.index + m[0].length, text: `0b${m[1]}` });
   return applyEdits(text, edits);
 }
 
@@ -1060,7 +1228,9 @@ export function transpileArduinoSketch(source: string): TranspileResult | Transp
     };
   };
   try {
-    const stripped = stripComments(source.replace(/\r\n?/g, '\n'));
+    const commentFree = stripComments(source.replace(/\r\n?/g, '\n'));
+    // PROGMEM (keep in flash) only matters on AVR boards; drop it so the declaration reads as a plain array
+    const stripped = commentFree.replace(/\bPROGMEM\b/g, (w, at: number) => (maskLiterals(commentFree).slice(at, at + w.length) === w ? ' '.repeat(w.length) : w));
     const enums = new Set<string>();
     // enum type names are needed before anything else looks for declarations
     for (const em of maskLiterals(stripped).matchAll(/\benum\s+([A-Za-z_]\w*)\s*\{/g)) if (em[1]) enums.add(em[1]);
@@ -1072,14 +1242,19 @@ export function transpileArduinoSketch(source: string): TranspileResult | Transp
     const userVars = new Set<string>();
     for (const vm of masked0.matchAll(new RegExp(`(?:${typeSrc})\\s+([A-Za-z_]\\w*)\\s*(?:[=;,\\[])`, 'g'))) if (vm[1] && !userFns.has(vm[1])) userVars.add(vm[1]);
 
-    const problems = staticChecks(masked0, userFns, userVars);
+    const libObjects = findLibraryObjects(masked0);
+    const defineNames = new Set<string>();
+    for (const dm of stripped.matchAll(/^\s*#\s*define\s+([A-Za-z_]\w*)/gm)) if (dm[1]) defineNames.add(dm[1]);
+    const problems = staticChecks(masked0, userFns, userVars, libObjects);
     const errors = problems.filter((p) => p.severity === 'error');
     if (errors.length) return fail(errors);
 
-    const ctx: DeclContext = { enums, intVars: new Map(), allVars: new Set(), warnings: [] };
+    const displayObjects = [...libObjects.keys(), ...(libObjects.has('oled') ? [] : ['oled'])];
+    const ctx: DeclContext = { enums, intVars: new Map(), allVars: new Set(), warnings: [...includeWarnings(stripped), ...displayTextWarnings(stripped, displayObjects)] };
     const params = new Set<string>();
     let code = transformEnums(stripped, enums);
     code = transformDirectives(code);
+    code = transformLibraryObjects(code);
     code = transformLiterals(code);
     code = transformCasts(code, typeSrc);
     code = transformFunctions(code, typeSrc, params);
@@ -1088,11 +1263,12 @@ export function transpileArduinoSketch(source: string): TranspileResult | Transp
     code = transformStringMethods(code);
     code = transformLoopGuards(code);
     code = transformAwaits(code, userFns);
+    code = transformStringBytes(code);
 
     const hasSetup = /async function\s+setup\s*\(/.test(code);
     const hasLoop = /async function\s+loop\s*\(/.test(code);
     const wrapped = [
-      ...headerLines(new Set([...userFns, ...ctx.allVars])),
+      ...headerLines(new Set([...userFns, ...ctx.allVars, ...defineNames, ...libObjects.keys()])),
       code,
       `return { setup: ${hasSetup ? 'setup' : 'null'}, loop: ${hasLoop ? 'loop' : 'null'} };`,
       `//# sourceURL=${SKETCH_SOURCE_URL}`,

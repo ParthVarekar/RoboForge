@@ -103,6 +103,90 @@ export function oledPinTip(index: number): [number, number, number] {
 }
 
 /**
+ * Character LCD module (HD44780, blue STN with white LED backlight) with the PCF8574T I2C backpack, lying face up on
+ * four M3 nylon standoffs. The backpack is soldered under the 16-pin header along the north edge; its right-angle
+ * 4-pin header (GND, VCC, SDA, SCL from north to south) points west, ending near the board's left edge.
+ * 1602A: 80 x 36 mm board, bezel 71.2 x 24.2, viewing area 64.5 x 16.4, characters 2.95 x 5.55 mm on a
+ * 3.55 x 5.95 mm pitch. 2004A: 98 x 60 mm board, bezel 97 x 40, viewing area 76 x 25.2, characters 2.95 x 4.75 mm
+ * on a 3.55 x 5.35 mm pitch. Backpack: 41.6 x 19.2 mm.
+ */
+export interface LcdModuleGeometry {
+  wMm: number;
+  dMm: number;
+  cols: number;
+  rows: number;
+  holeInsetMm: number;
+  holeDMm: number;
+  /** Height of the nylon standoffs: the board's underside above the bench. */
+  boardBottomMm: number;
+  bezel: { w: number; d: number; h: number };
+  view: { w: number; d: number };
+  charW: number;
+  charD: number;
+  pitchX: number;
+  pitchY: number;
+  /** First of the 16 header holes (x from the left edge) and the row's distance from the north edge. */
+  header1XMm: number;
+  headerYMm: number;
+  backpack: { w: number; d: number; leftXMm: number; northYMm: number };
+}
+
+const BACKPACK = { w: 41.6, d: 19.2 };
+
+function lcdModule(o: Omit<LcdModuleGeometry, 'backpack' | 'boardBottomMm' | 'headerYMm'>): LcdModuleGeometry {
+  return { ...o, boardBottomMm: 15, headerYMm: 2.5, backpack: { ...BACKPACK, leftXMm: o.header1XMm - 1.75, northYMm: 0.6 } };
+}
+
+export const LCD1602_I2C: LcdModuleGeometry = lcdModule({
+  wMm: 80,
+  dMm: 36,
+  cols: 16,
+  rows: 2,
+  holeInsetMm: 2.5,
+  holeDMm: 2.5,
+  bezel: { w: 71.2, d: 24.2, h: 7.0 },
+  view: { w: 64.5, d: 16.4 },
+  charW: 2.95,
+  charD: 5.55,
+  pitchX: 3.55,
+  pitchY: 5.95,
+  header1XMm: 8.0,
+});
+
+export const LCD2004_I2C: LcdModuleGeometry = lcdModule({
+  wMm: 98,
+  dMm: 60,
+  cols: 20,
+  rows: 4,
+  holeInsetMm: 2.5,
+  holeDMm: 3.0,
+  bezel: { w: 97.0, d: 40.0, h: 8.6 },
+  view: { w: 76.0, d: 25.2 },
+  charW: 2.95,
+  charD: 4.75,
+  pitchX: 3.55,
+  pitchY: 5.35,
+  header1XMm: 10.0,
+});
+
+/** The backpack's 4-pin row: y from the north edge of the LCD board (mm) for pin 0..3 (GND, VCC, SDA, SCL). */
+export function lcdBackpackPinYMm(g: LcdModuleGeometry, index: number): number {
+  return g.backpack.northYMm + 12.0 + (index - 1.5) * HEADER_PITCH_MM;
+}
+
+/** Height (mm) of the backpack's horizontal pins above the bench: under the backpack, which hangs under the board. */
+export function lcdBackpackPinHeightMm(g: LcdModuleGeometry): number {
+  return g.boardBottomMm - 2.5 - PCB_T_MM - 1.27;
+}
+
+/** Tip of backpack pin `index` (cm, part frame): the pins point west (-X). */
+export function lcdPinTip(g: LcdModuleGeometry, index: number): [number, number, number] {
+  const r = (v: number) => Number(v.toFixed(4));
+  const tipX = g.backpack.leftXMm - 6.2;
+  return [r((tipX - g.wMm / 2) * MM), r(lcdBackpackPinHeightMm(g) * MM), r((lcdBackpackPinYMm(g, index) - g.dMm / 2) * MM)];
+}
+
+/**
  * AI-Thinker ESP32-CAM: 27 x 40.5 mm, two rows of 8 pins 22.86 mm apart toward the south end (row offsets are not in
  * the datasheet; 5V and 3V3 sit at the south end). The camera end is north.
  */

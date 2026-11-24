@@ -32,6 +32,7 @@ import {
   type DroneFlightInput,
 } from './engine/arenaPhysics';
 import { analyzeCircuit, resolveMotorDrives, type MotorDriveOutput } from './engine/circuit';
+import { DisplayBench } from './engine/displays/panels';
 import { VirtualEsp32Runtime, type SerialEntry } from './engine/runtime';
 import type { SketchProblem } from './engine/sketchTranspiler';
 import {
@@ -124,7 +125,6 @@ export function App(): React.ReactElement {
   const [isRunning, setIsRunning] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [serialLog, setSerialLog] = useState<SerialEntry[]>([]);
-  const [oledLines, setOledLines] = useState<string[]>(['ROBOFORGE 2WD', 'I2C 0x3C OK', 'PRESS RUN']);
   const [benchDistanceCm, setBenchDistanceCm] = useState(85);
   const [exportOpen, setExportOpen] = useState(false);
   const [runtimeProblem, setRuntimeProblem] = useState<SketchProblem | null>(null);
@@ -144,6 +144,14 @@ export function App(): React.ReactElement {
   const analysis = useMemo(() => analyzeCircuit(project), [project]);
   const analysisRef = useRef(analysis);
   analysisRef.current = analysis;
+
+  // the display modules on the bench: powered from the circuit, driven by the sketch, painted by the 3D view
+  const displayBenchRef = useRef<DisplayBench | null>(null);
+  if (!displayBenchRef.current) displayBenchRef.current = new DisplayBench();
+  const displayBench = displayBenchRef.current;
+  useEffect(() => {
+    displayBench.sync(analysis.sensors.i2cDevices);
+  }, [analysis, displayBench]);
 
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -244,7 +252,7 @@ export function App(): React.ReactElement {
         analysisRef.current.sensors.buttonPins.some(
           (b) => b.gpio === pin && pressedButtonsRef.current.has(b.componentId),
         ),
-      onOledUpdate: (lines) => setOledLines(lines),
+      displays: () => displayBenchRef.current,
       onSerial: appendSerial,
       onRuntimeError: (msg, line) => {
         setCompileError(line ? `Line ${line}: ${msg}` : msg);
@@ -500,7 +508,6 @@ export function App(): React.ReactElement {
     setVehicleOverride(null);
     setCompileError(null);
     setSerialLog([]);
-    setOledLines(['ROBOFORGE 2WD', 'I2C 0x3C OK', 'PRESS RUN']);
     physicsRef.current.setArenaConfig(resolveArenaConfig(next));
     physicsRef.current.resetRover();
   };
@@ -827,7 +834,7 @@ export function App(): React.ReactElement {
             arenaEditTool={arenaEditTool}
             selectedObstacleId={selectedObstacleId}
             vehicleMode={vehicleMode}
-            oledLines={oledLines}
+            displays={displayBench}
             physicsRef={physicsRef}
             liveMotorsRef={liveMotorsRef}
             livePinPwmRef={livePinPwmRef}

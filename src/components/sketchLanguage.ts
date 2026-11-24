@@ -1,5 +1,5 @@
 import * as monaco from 'monaco-editor';
-import { HAL_API, halEntry, halMember, type HalEntry } from '../engine/halApi';
+import { HAL_API, HAL_CLASSES, halClass, halEntry, halMember, type HalEntry } from '../engine/halApi';
 
 /**
  * Editor support for sketches: light/dark themes that match the app, autocomplete (virtual ESP32 API, C++ words,
@@ -22,6 +22,16 @@ const SNIPPETS: Array<{ label: string; detail: string; body: string }> = [
   { label: 'ifelse', detail: 'If / else', body: 'if (${1:condition}) {\n\t$2\n} else {\n\t$0\n}' },
   { label: 'switch', detail: 'Switch on a value', body: 'switch (${1:value}) {\n\tcase ${2:0}:\n\t\t$0\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n}' },
   { label: 'every', detail: 'Run every N ms without blocking (needs a global unsigned long)', body: 'if (millis() - ${1:lastMs} >= ${2:500}) {\n\t${1:lastMs} = millis();\n\t$0\n}' },
+  {
+    label: 'oled-setup',
+    detail: 'Adafruit SSD1306 OLED: includes, object and begin (the rover wires it to SDA 32 / SCL 33)',
+    body: '#include <Wire.h>\n#include <Adafruit_GFX.h>\n#include <Adafruit_SSD1306.h>\n\nAdafruit_SSD1306 display(128, 64, &Wire, -1);\n\nvoid setup() {\n\tWire.begin(${1:32}, ${2:33});\n\tdisplay.begin(SSD1306_SWITCHCAPVCC, 0x3C);\n\tdisplay.clearDisplay();\n\tdisplay.setTextSize(1);\n\tdisplay.setTextColor(SSD1306_WHITE);\n\tdisplay.setCursor(0, 0);\n\tdisplay.println("${3:Hello}");\n\tdisplay.display();\n}\n\nvoid loop() {\n\t$0\n\tdelay(100);\n}',
+  },
+  {
+    label: 'lcd-setup',
+    detail: 'LiquidCrystal_I2C 16x2 LCD: include, object, init and backlight (default pins SDA 21 / SCL 22)',
+    body: '#include <Wire.h>\n#include <LiquidCrystal_I2C.h>\n\nLiquidCrystal_I2C lcd(0x27, ${1:16}, ${2:2});\n\nvoid setup() {\n\tlcd.init();\n\tlcd.backlight();\n\tlcd.setCursor(0, 0);\n\tlcd.print("${3:Hello}");\n}\n\nvoid loop() {\n\t$0\n\tdelay(100);\n}',
+  },
   { label: 'drive', detail: 'DRV8833 motor helper (IN1/IN2 on 25/26, IN3/IN4 on 27/14)', body: 'void drive(int left, int right) {\n\tanalogWrite(25, left > 0 ? left : 0);\n\tanalogWrite(26, left < 0 ? -left : 0);\n\tanalogWrite(27, right > 0 ? right : 0);\n\tanalogWrite(14, right < 0 ? -right : 0);\n}' },
 ];
 
@@ -31,6 +41,7 @@ function docMarkdown(e: HalEntry): monaco.IMarkdownString {
 
 function completionKind(e: HalEntry): monaco.languages.CompletionItemKind {
   if (e.kind === 'constant') return monaco.languages.CompletionItemKind.Constant;
+  if (e.kind === 'class') return monaco.languages.CompletionItemKind.Class;
   if (e.kind === 'object') return monaco.languages.CompletionItemKind.Module;
   return monaco.languages.CompletionItemKind.Function;
 }
@@ -46,6 +57,22 @@ function item(e: HalEntry, range: monaco.IRange): monaco.languages.CompletionIte
     range,
     sortText: `0_${e.name}`,
   };
+}
+
+/** Objects the sketch declares from a display library (`Adafruit_SSD1306 display(...)`): name -> class entry. */
+function libraryObjects(model: monaco.editor.ITextModel): Map<string, HalEntry> {
+  const out = new Map<string, HalEntry>();
+  const re = new RegExp(`\\b(${HAL_CLASSES.map((c) => c.name).join('|')})\\s+([A-Za-z_]\\w*)\\s*[(;=]`, 'g');
+  for (const m of model.getValue().matchAll(re)) {
+    const cls = halClass(m[1]!);
+    if (cls) out.set(m[2]!, cls);
+  }
+  return out;
+}
+
+/** Members of `name` (Serial, imu, oled, Wire, or a declared library object), if it has any. */
+function membersOf(model: monaco.editor.ITextModel, name: string): HalEntry[] | undefined {
+  return libraryObjects(model).get(name)?.members ?? halEntry(name)?.members;
 }
 
 /** Text before a position, scanning back at most `limit` characters (enough for any one call). */
@@ -135,12 +162,12 @@ export function registerSketchLanguage(): void {
       const word = model.getWordUntilPosition(position);
       const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
       const before = model.getLineContent(position.lineNumber).slice(0, word.startColumn - 1);
-      const member = /\b(Serial|imu|oled)\s*\.\s*$/.exec(before);
+      const member = /\b([A-Za-z_]\w*)\s*\.\s*$/.exec(before);
       if (member) {
-        return { suggestions: (halEntry(member[1]!)?.members ?? []).map((m) => item(m, range)) };
+        return { suggestions: (membersOf(model, member[1]!) ?? []).map((m) => item(m, range)) };
       }
       if (/\.\s*$/.test(before)) return { suggestions: [] };
-      const suggestions: monaco.languages.CompletionItem[] = HAL_API.map((e) => item(e, range));
+      const suggestions: monaco.languages.CompletionItem[] = [...HAL_API, ...HAL_CLASSES].map((e) => item(e, range));
       for (const kw of KEYWORDS) {
         suggestions.push({ label: kw, kind: monaco.languages.CompletionItemKind.Keyword, insertText: kw, range, sortText: `2_${kw}` });
       }
@@ -164,8 +191,12 @@ export function registerSketchLanguage(): void {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
       const before = model.getLineContent(position.lineNumber).slice(0, word.startColumn - 1);
-      const member = /\b(Serial|imu|oled)\s*\.\s*$/.exec(before);
-      const entry = member ? halMember(member[1]!, word.word) : /\.\s*$/.test(before) ? undefined : halEntry(word.word);
+      const member = /\b([A-Za-z_]\w*)\s*\.\s*$/.exec(before);
+      const entry = member
+        ? membersOf(model, member[1]!)?.find((m) => m.name === word.word)
+        : /\.\s*$/.test(before)
+          ? undefined
+          : (halEntry(word.word) ?? halClass(word.word));
       if (!entry) return null;
       return {
         range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
@@ -195,9 +226,9 @@ export function registerSketchLanguage(): void {
         else if ((ch === ';' || ch === '{' || ch === '}') && depth === 0) break;
       }
       if (open < 0) return null;
-      const callee = /(?:\b(Serial|imu|oled)\s*\.\s*)?([A-Za-z_]\w*)\s*$/.exec(text.slice(0, open));
+      const callee = /(?:\b([A-Za-z_]\w*)\s*\.\s*)?([A-Za-z_]\w*)\s*$/.exec(text.slice(0, open));
       if (!callee) return null;
-      const entry = callee[1] ? halMember(callee[1], callee[2]!) : halEntry(callee[2]!);
+      const entry = callee[1] ? (membersOf(model, callee[1])?.find((m) => m.name === callee[2]) ?? halMember(callee[1], callee[2]!)) : halEntry(callee[2]!);
       if (!entry || entry.kind !== 'function') return null;
       const label = entry.signature;
       const paren = label.indexOf('(');

@@ -56,6 +56,25 @@ export function getPartThumbnailSvg(kind: ComponentKind): string {
         <text x="60" y="37" font-size="8" font-family="monospace" text-anchor="middle" fill="#38bdf8">YAW 0.0°</text>
         <text x="60" y="49" font-size="8" font-family="monospace" text-anchor="middle" fill="#38bdf8">DST 42cm</text>
       `);
+    case 'lcd1602_i2c':
+      return wrap(`
+        <rect x="8" y="14" width="104" height="48" rx="2" fill="#1f7a3a" stroke="#14532d" stroke-width="1.5"/>
+        <rect x="14" y="22" width="92" height="34" rx="1.5" fill="#2b2f36"/>
+        <rect x="19" y="27" width="82" height="24" fill="#1f4fd8"/>
+        <text x="60" y="37" font-size="8" font-family="monospace" text-anchor="middle" fill="#e8f1ff">HELLO WORLD</text>
+        <text x="60" y="47" font-size="8" font-family="monospace" text-anchor="middle" fill="#e8f1ff">16x2 I2C</text>
+        <g fill="#e5e7eb">${Array.from({ length: 4 }, (_, i) => `<rect x="2" y="${30 + i * 5}" width="8" height="2"/>`).join('')}</g>
+      `);
+    case 'lcd2004_i2c':
+      return wrap(`
+        <rect x="8" y="6" width="104" height="64" rx="2" fill="#1f7a3a" stroke="#14532d" stroke-width="1.5"/>
+        <rect x="10" y="16" width="100" height="44" rx="1.5" fill="#2b2f36"/>
+        <rect x="18" y="21" width="84" height="34" fill="#1f4fd8"/>
+        <g font-size="6.5" font-family="monospace" text-anchor="middle" fill="#e8f1ff">
+          <text x="60" y="29">ROBOFORGE</text><text x="60" y="37">DIST 42cm</text><text x="60" y="45">YAW 12.5</text><text x="60" y="53">20x4 I2C</text>
+        </g>
+        <g fill="#e5e7eb">${Array.from({ length: 4 }, (_, i) => `<rect x="2" y="${30 + i * 5}" width="8" height="2"/>`).join('')}</g>
+      `);
     case 'esp32_cam':
       return wrap(`
         <rect x="34" y="10" width="52" height="56" rx="4" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>

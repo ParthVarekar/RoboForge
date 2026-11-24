@@ -17,7 +17,7 @@ import { addHeaderPins } from '../kit/headers';
 import { chipPassive, crystalHc49s, ledSmd, qfn, shieldCan, soic, sot23, tssop } from '../kit/packages';
 import { PBR, plastic } from '../kit/pbr';
 import { buildPcb, MM } from '../kit/pcb';
-import { paintOledCanvas } from '../materials';
+import { paintOled, type DisplaySurface } from '../displayPainter';
 import type { PartBuilder } from './types';
 
 type Pt = readonly [number, number];
@@ -201,7 +201,10 @@ export const buildOled: PartBuilder = ({ group, spec }) => {
 
   // white foam tape under the panel (shows as a thin light line), bottom substrate, then the cover glass
   group.add(box((gl.w - 1.2) * MM, tape, (gl.d - 1.2) * MM, plastic(0xe9e9e4, 0.9), glassCentre.x, top + tape / 2, glassCentre.z));
-  const glassMat = PBR.glassBlack();
+  // The panel's own glass: a faint sheen only. Seen from straight above, fully glossy glass mirrors the studio's
+  // bright ceiling light and the whole screen turns white (the scene's environment strength overrides a material's
+  // envMapIntensity, so the reflectivity itself is lowered).
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x07090c, roughness: 0.14, metalness: 0, specularIntensity: 0.12, clearcoat: 0.18, clearcoatRoughness: 0.2 });
   group.add(box(gl.w * MM, subT, gl.d * MM, glassMat, glassCentre.x, top + tape + subT / 2, glassCentre.z, 0.1 * MM));
   const coverCentre = at(g.wMm / 2, gl.yTop + coverD / 2);
   group.add(box(gl.w * MM, coverT, coverD * MM, glassMat, coverCentre.x, top + tape + subT + coverT / 2, coverCentre.z, 0.1 * MM));
@@ -223,15 +226,16 @@ export const buildOled: PartBuilder = ({ group, spec }) => {
   curl.position.set(a.x, top + curlR - 0.02 * MM, (glassEnd - g.dMm / 2) * MM);
   group.add(curl);
 
-  // the lit dot matrix under the cover glass (live text from oled.println)
+  // the lit dot matrix under the cover glass (what the sketch draws; black until it starts the display)
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 256;
-  paintOledCanvas(canvas, [], true);
+  paintOled(canvas, undefined, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
-  const screenMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.3, roughness: 0.06, metalness: 0 });
+  // the dot matrix itself: light only (no reflection of its own), so the lit pixels read from any view
+  const screenMat = new THREE.MeshPhysicalMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.3, roughness: 0.3, metalness: 0, specularIntensity: 0 });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(gl.activeW * MM, gl.activeD * MM), screenMat);
   screen.rotation.x = -Math.PI / 2;
   const aa = at(g.wMm / 2, gl.yTop + 2.0 + gl.activeD / 2);
@@ -239,7 +243,8 @@ export const buildOled: PartBuilder = ({ group, spec }) => {
   group.add(screen);
 
   addHeaderPins(group, { tips: uprightTips(spec), boardTop: board.top, boardBottom: board.bottom });
-  return { oledCanvas: canvas, oledTexture: tex };
+  const display: DisplaySurface = { type: 'oled', canvas, texture: tex, material: screenMat };
+  return { display };
 };
 
 /* ================================================================== ESP32-CAM (AI-Thinker) */

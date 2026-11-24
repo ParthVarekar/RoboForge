@@ -18,6 +18,8 @@ import type {
   DroneFlightInput,
 } from '../engine/arenaPhysics';
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
+import type { DisplayBench } from '../engine/displays/panels';
+import { paintDisplays } from '../viewport/displayPainter';
 import {
   resolveArenaConfig,
   type ArenaObstacleKind,
@@ -52,7 +54,8 @@ export interface Viewport3DProps {
   arenaEditTool: ArenaEditTool;
   selectedObstacleId: string | null;
   vehicleMode: ArenaVehicleMode;
-  oledLines: readonly string[];
+  /** The display modules (OLED, LCD) whose screens the 3D view paints. */
+  displays: DisplayBench;
   physicsRef: React.MutableRefObject<ArenaPhysicsEngine>;
   liveMotorsRef: React.MutableRefObject<MotorDriveOutput[]>;
   livePinPwmRef: React.MutableRefObject<ReadonlyMap<number, number>>;
@@ -98,7 +101,7 @@ export function Viewport3D({
   arenaEditTool,
   selectedObstacleId,
   vehicleMode,
-  oledLines,
+  displays,
   physicsRef,
   liveMotorsRef,
   livePinPwmRef,
@@ -197,7 +200,6 @@ export function Viewport3D({
       bench.setSnapMm(snapMm);
       bench.setSelection(selectedComponentId, selectedWireId);
       bench.setRoutingWireId(routingWireId);
-      bench.updateOledLines(oledLines);
       benchSceneRef.current = bench;
 
       const ro = new ResizeObserver(() => bench.resize());
@@ -239,8 +241,7 @@ export function Viewport3D({
 
   useEffect(() => {
     benchSceneRef.current?.syncProject(project, analysis);
-    benchSceneRef.current?.updateOledLines(oledLines);
-  }, [project, analysis, oledLines]);
+  }, [project, analysis]);
 
   useEffect(() => {
     benchSceneRef.current?.setTheme(theme);
@@ -269,10 +270,6 @@ export function Viewport3D({
   useEffect(() => {
     benchSceneRef.current?.setRoutingWireId(routingWireId);
   }, [routingWireId]);
-
-  useEffect(() => {
-    benchSceneRef.current?.updateOledLines(oledLines);
-  }, [oledLines]);
 
   useEffect(() => {
     arenaSceneRef.current?.syncObstacles(project.obstacles);
@@ -333,6 +330,7 @@ export function Viewport3D({
 
       if (mode === 'workbench' && benchSceneRef.current) {
         benchSceneRef.current.updateLiveState(livePinPwmRef.current, liveMotorsRef.current);
+        paintDisplays(benchSceneRef.current.displaySurfaces(), displays, now);
         benchSceneRef.current.render(dt);
       } else if (mode === 'arena' && arenaSceneRef.current) {
         let tel: ArenaTelemetry;
@@ -365,6 +363,7 @@ export function Viewport3D({
         const ledPin = analysis.sensors.ledPins[0]?.gpio ?? 4;
         const ledPwm = analysis.sensors.esp32Powered ? (livePinPwmRef.current.get(ledPin) ?? 0) : 0;
         const mappedPoints = physicsRef.current.getOccupancyGrid().mappedPoints;
+        paintDisplays(vehicleSnapshotRef.current?.displays ?? [], displays, now);
         arenaSceneRef.current.render(dt, physicsRef.current.getRoverPose(), tel, ledPwm, mappedPoints);
 
         if (now - lastHudUpdate > 85) {
@@ -387,6 +386,7 @@ export function Viewport3D({
     manualDriveRef,
     droneInputRef,
     physicsRef,
+    displays,
   ]);
 
   const handleCameraPreset = (v: BenchCameraView) => {

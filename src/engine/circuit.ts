@@ -1,4 +1,5 @@
 import { getPartSpec, getPinSpec, type PinSpec } from '../catalog/partsCatalog';
+import { DEFAULT_I2C_ADDRESS, type I2cDeviceWiring } from './displays/panels';
 import { SOCKET_RISE_CM, wireLengthCm } from './wireLength';
 import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 
@@ -44,6 +45,8 @@ export interface SensorWiringStatus {
   hcsr04EchoGpio: number | null;
   hcsr04HasDivider: boolean;
   oledReady: boolean;
+  /** Devices on I2C (OLED, LCDs, MPU6050) with their power, address and the ESP32 pins their SDA/SCL reach. */
+  i2cDevices: I2cDeviceWiring[];
   camPowered: boolean;
   ledPins: Array<{ componentId: string; gpio: number | null; hasSeriesResistor: boolean }>;
   buttonPins: Array<{ componentId: string; gpio: number | null }>;
@@ -572,6 +575,66 @@ function resolveSensorsAndCheck(
     oledReady = Boolean(powered && sdaNet?.gpioNumbers.length && sclNet?.gpioNumbers.length);
   }
 
+  // devices on the I2C bus, for the display libraries (which need the right pins and address) and Wire scans
+  const i2cDevices: I2cDeviceWiring[] = [];
+  for (const comp of project.components) {
+    const address = DEFAULT_I2C_ADDRESS[comp.kind];
+    if (address === undefined) continue;
+    const isLcd = comp.kind === 'lcd1602_i2c' || comp.kind === 'lcd2004_i2c';
+    const vccNet = pinToNet.get(pinKey({ componentId: comp.id, pinId: 'VCC' }));
+    const sdaNet = pinToNet.get(pinKey({ componentId: comp.id, pinId: 'SDA' }));
+    const sclNet = pinToNet.get(pinKey({ componentId: comp.id, pinId: 'SCL' }));
+    const powered = isPoweredByNet(comp, 'VCC', 'GND', pinToNet, isLcd ? 2.7 : 3.0, 5.5);
+    const dev: I2cDeviceWiring = {
+      componentId: comp.id,
+      kind: comp.kind,
+      address,
+      powered,
+      supplyV: vccNet?.voltage ?? null,
+      sdaGpio: sdaNet?.gpioNumbers[0] ?? null,
+      sclGpio: sclNet?.gpioNumbers[0] ?? null,
+    };
+    i2cDevices.push(dev);
+    if (!isLcd || !powered) continue;
+    const name = comp.kind === 'lcd2004_i2c' ? 'LCD 20x4' : 'LCD 16x2';
+    const v = dev.supplyV ?? 5;
+    if (v < 4.5) {
+      diagnostics.push({
+        id: `lcd-low-supply-${comp.id}`,
+        severity: 'warning',
+        title: `${name} runs from ${v.toFixed(1)} V`,
+        detail: 'These character LCDs are made for 5 V. From 3.3 V the characters are very faint even with the contrast trimmer turned fully.',
+        fix: 'Power the LCD VCC from the 5 V rail (the buck output) and keep GND common.',
+        componentIds: [comp.id],
+      });
+    } else if (dev.sdaGpio !== null || dev.sclGpio !== null) {
+      diagnostics.push({
+        id: `lcd-5v-pullups-${comp.id}`,
+        severity: 'info',
+        title: `${name} backpack pulls SDA/SCL up to ${v.toFixed(1)} V`,
+        detail: 'The PCF8574 backpack has 4.7 kOhm pull-ups to its VCC, so the ESP32 I2C pins sit at about 5 V when idle, above their 3.6 V rating. Many builds work like this, but it is outside the ESP32 specification.',
+        fix: 'Put a 3.3 V / 5 V I2C level shifter between the backpack and the ESP32, or remove the backpack pull-ups and use 3.3 V ones.',
+        componentIds: [comp.id],
+      });
+    }
+  }
+  const seenAddr = new Map<string, I2cDeviceWiring>();
+  for (const d of i2cDevices) {
+    if (!d.powered || d.sdaGpio === null || d.sclGpio === null) continue;
+    const key = `${d.sdaGpio}/${d.sclGpio}/${d.address}`;
+    const other = seenAddr.get(key);
+    if (other) {
+      diagnostics.push({
+        id: `i2c-address-clash-${d.componentId}`,
+        severity: 'warning',
+        title: `Two I2C devices answer at 0x${d.address.toString(16).toUpperCase()}`,
+        detail: `Both are on GPIO${d.sdaGpio}/GPIO${d.sclGpio}; the sketch can only talk to one of them at that address.`,
+        fix: "Remove one of them, or change one module's address with its address jumpers (the simulator models the default addresses only).",
+        componentIds: [other.componentId, d.componentId],
+      });
+    } else seenAddr.set(key, d);
+  }
+
   // HC-SR04
   let hcsr04Ready = false;
   let hcsr04TrigGpio: number | null = null;
@@ -703,6 +766,7 @@ function resolveSensorsAndCheck(
     hcsr04EchoGpio,
     hcsr04HasDivider,
     oledReady,
+    i2cDevices,
     camPowered,
     ledPins,
     buttonPins,

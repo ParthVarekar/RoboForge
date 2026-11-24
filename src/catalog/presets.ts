@@ -1,5 +1,8 @@
 import { DEFAULT_ARENA_CONFIG, type StudioProject } from '../schema/projectSchema';
 import { getArenaTemplate } from './arenaPresets';
+import { DISPLAY_LAB_SKETCH, I2C_SCANNER_SKETCH, OLED_DASHBOARD_SKETCH } from './displaySketches';
+
+export { DISPLAY_LAB_SKETCH, I2C_SCANNER_SKETCH, OLED_DASHBOARD_SKETCH };
 
 export interface SketchTemplate {
   id: string;
@@ -471,6 +474,9 @@ export const SKETCH_TEMPLATES: SketchTemplate[] = [
   { id: 'quad_spin', label: '5" Quad ESC Motor Ramp Test', code: QUAD_SPIN_TEST_SKETCH },
   { id: 'gap_sweep', label: 'Reality-Gap Drift Sweep', code: CALIBRATION_SWEEP_SKETCH },
   { id: 'serial_cmd', label: 'Serial Console & Sensors', code: TELEMETRY_SERIAL_SKETCH },
+  { id: 'oled_dashboard', label: 'Rover OLED Dashboard (Adafruit_SSD1306)', code: OLED_DASHBOARD_SKETCH },
+  { id: 'display_lab', label: 'Display Lab: OLED + 16x2 LCD', code: DISPLAY_LAB_SKETCH },
+  { id: 'i2c_scanner', label: 'I2C Scanner', code: I2C_SCANNER_SKETCH },
 ];
 
 export const DEFAULT_ARENA_OBSTACLES: StudioProject['obstacles'] = [
@@ -663,6 +669,43 @@ function makeBlankBenchPreset(): StudioProject {
   };
 }
 
+/**
+ * An ESP32 driving a 0.96" OLED and a 16x2 I2C LCD on the default I2C pins (SDA 21, SCL 22), powered from a 2S pack
+ * through the buck converter: the LCD from 5 V, the OLED from the ESP32's 3V3.
+ */
+function makeDisplayLabPreset(): StudioProject {
+  return {
+    version: 1,
+    name: 'Display Lab (OLED + LCD)',
+    description: 'ESP32 with a 0.96" SSD1306 OLED and a 16x2 I2C LCD sharing SDA 21 / SCL 22. The sketch uses the real Adafruit_SSD1306 and LiquidCrystal_I2C libraries.',
+    circuitProtection: true,
+    code: DISPLAY_LAB_SKETCH,
+    obstacles: DEFAULT_ARENA_OBSTACLES,
+    faults: DEFAULT_FAULTS,
+    components: [
+      { id: 'esp32_1', kind: 'esp32_devkit', label: 'ESP32 Main', position: [-6.5, 0, 0], rotationY: 0 },
+      { id: 'oled_1', kind: 'oled_ssd1306', label: '0.96" OLED', position: [-0.6, 0, -5.6], rotationY: 0 },
+      { id: 'lcd_1', kind: 'lcd1602_i2c', label: 'LCD 16x2', position: [6.4, 0, -1.4], rotationY: 0 },
+      { id: 'buck_1', kind: 'lm2596_buck', label: 'LM2596 5.2V', position: [-1.2, 0, 6.0], rotationY: 0 },
+      { id: 'bat_1', kind: 'battery_2s', label: '2S Li-Ion 7.4V', position: [-8.0, 0, 9.6], rotationY: 0 },
+    ],
+    wires: [
+      { id: 'd1', from: { componentId: 'bat_1', pinId: 'BAT_POS' }, to: { componentId: 'buck_1', pinId: 'IN_POS' }, color: '#ef4444', style: 'routed' },
+      { id: 'd2', from: { componentId: 'bat_1', pinId: 'GND' }, to: { componentId: 'buck_1', pinId: 'IN_NEG' }, color: '#1e293b', style: 'routed' },
+      { id: 'd3', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'esp32_1', pinId: 'VIN' }, color: '#ef4444', style: 'routed' },
+      { id: 'd4', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'esp32_1', pinId: 'GND_L' }, color: '#1e293b', style: 'routed' },
+      { id: 'd5', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'lcd_1', pinId: 'VCC' }, color: '#ef4444', style: 'routed' },
+      { id: 'd6', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'lcd_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
+      { id: 'd7', from: { componentId: 'esp32_1', pinId: '3V3' }, to: { componentId: 'oled_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
+      { id: 'd8', from: { componentId: 'esp32_1', pinId: 'GND_R' }, to: { componentId: 'oled_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
+      { id: 'd9', from: { componentId: 'esp32_1', pinId: 'GPIO21' }, to: { componentId: 'oled_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'd10', from: { componentId: 'esp32_1', pinId: 'GPIO22' }, to: { componentId: 'oled_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+      { id: 'd11', from: { componentId: 'esp32_1', pinId: 'GPIO21' }, to: { componentId: 'lcd_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'd12', from: { componentId: 'esp32_1', pinId: 'GPIO22' }, to: { componentId: 'lcd_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+    ],
+  };
+}
+
 function makeRoomMapperPreset(): StudioProject {
   const base = makeRoboForgeRoverPreset();
   return {
@@ -685,6 +728,7 @@ export const STUDIO_PRESETS: PresetEntry[] = [
   { id: 'room_mapper', label: 'Autonomous 360° Room Mapper', create: makeRoomMapperPreset },
   { id: 'quad_5in', label: '5-Inch Freestyle Quadcopter', create: makeQuad5InPreset },
   { id: 'fault_lab', label: 'Circuit Fault Diagnostics Lab', create: makeFaultLabPreset },
+  { id: 'display_lab', label: 'Display Lab: OLED + 16x2 LCD', create: makeDisplayLabPreset },
   { id: 'blank_bench', label: 'Blank Workbench', create: makeBlankBenchPreset },
 ];
 

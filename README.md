@@ -21,8 +21,8 @@ Everything runs locally in the browser; nothing needs a server or an account.
 ### Parts modelled from datasheets
 
 Every part is built at its real size from datasheet drawings and photos: the 30-pin ESP32 DevKit V1 with its
-ESP-WROOM-32, CP2102 and AMS1117; the red HW-627 DRV8833; the GY-521, HC-SR04, SSD1306 OLED and AI-Thinker
-ESP32-CAM; a TT gearmotor on a 65 mm wheel; a 2207 motor with a lofted 5" tri-blade; an FPV stack, an LM2596
+ESP-WROOM-32, CP2102 and AMS1117; the red HW-627 DRV8833; the GY-521, HC-SR04, SSD1306 OLED, 16x2 and 20x4
+character LCDs with the PCF8574 I2C backpack, and the AI-Thinker ESP32-CAM; a TT gearmotor on a 65 mm wheel; a 2207 motor with a lofted 5" tri-blade; an FPV stack, an LM2596
 buck, LiPo and Li-ion packs, and the passives. Headers sit at 2.54 mm and a wire's DuPont socket lands on the pin
 that is drawn; leads and pads get soldered joints. Dimensions, pin orders and sources are listed in
 [docs/06_COMPONENT_REFERENCES.md](docs/06_COMPONENT_REFERENCES.md), including what is simplified.
@@ -50,6 +50,26 @@ that is drawn; leads and pads get soldered joints. Dimensions, pin orders and so
 | F8 / Shift+F8 | Next / previous problem |
 
 <br clear="right" />
+
+### Displays you program like the real ones
+
+The OLED and the LCDs show what the sketch draws, using the same libraries as on the board, so the code can be
+uploaded unchanged:
+
+- **0.96" SSD1306 OLED** with `Adafruit_SSD1306` / `Adafruit_GFX`: pixels, lines, rectangles, circles, rounded
+  rectangles, triangles, bitmaps (image2cpp and XBM), the built-in 6x8 font with text size, wrap, colours and
+  rotation, invert, dim and hardware scroll. Nothing appears until `display.display()`, as on the real module.
+- **16x2 and 20x4 LCDs** with `LiquidCrystal_I2C`: `init`, `backlight`, `setCursor`, `print`, custom characters
+  (`createChar`, `B01010` constants), cursor, blink, scrolling. The character ROM, row order and backlight behave
+  like the HD44780: text past the end of row 0 of a 20x4 continues on row 2, `(char)223` is the degree sign.
+- **The I2C bus is real**: `Wire.begin(sda, scl)` picks the pins (default 21/22), the OLED answers at 0x3C and the
+  LCD at 0x27, and an I2C scanner sketch finds what is wired. A wrong address, swapped SDA/SCL or a missing
+  `display()` leaves the screen dark, and the Serial tab says why.
+- Try the **Display Lab** preset (ESP32 + OLED + 16x2 LCD) or the *Rover OLED Dashboard* and *I2C Scanner* examples.
+  The simple `oled.println()` shortcut still works for quick text.
+
+Not modelled: U8g2 and other display libraries, SPI displays, the parallel `LiquidCrystal` wiring, custom GFX font
+files (they are drawn with the built-in font scaled to about their size), and changing the modules' address jumpers.
 
 | Interactive 3D Custom Arena Builder | Autonomous 360° Zero-Collision Room Mapper |
 | :---: | :---: |

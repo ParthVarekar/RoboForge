@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getPartSpec, type PinSpec } from '../catalog/partsCatalog';
 import type { ComponentInstance } from '../schema/projectSchema';
+import type { DisplaySurface } from './displayPainter';
 import { markShared } from './kit/pbr';
 import { PART_BUILDERS } from './parts';
 
@@ -12,8 +13,7 @@ export interface ComponentVisualHandle {
   wheelMesh: THREE.Object3D | null;
   propMesh: THREE.Object3D | null;
   ledMaterial: THREE.MeshStandardMaterial | null;
-  oledCanvas: HTMLCanvasElement | null;
-  oledTexture: THREE.CanvasTexture | null;
+  display: DisplaySurface | null;
   buttonCap: THREE.Mesh | null;
   faultRing: THREE.Mesh;
 }
@@ -155,8 +155,7 @@ export function buildComponentGroup(instance: ComponentInstance): ComponentVisua
     wheelMesh: result.wheelMesh ?? null,
     propMesh: result.propMesh ?? null,
     ledMaterial: result.ledMaterial ?? null,
-    oledCanvas: result.oledCanvas ?? null,
-    oledTexture: result.oledTexture ?? null,
+    display: result.display ?? null,
     buttonCap: result.buttonCap ?? null,
     faultRing,
   };

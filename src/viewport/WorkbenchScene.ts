@@ -8,7 +8,8 @@ import { pinKey } from '../engine/circuit';
 import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 import { buildComponentGroup, setPinHaloVisible, type ComponentVisualHandle } from './componentMeshes';
 import { disposeObject } from './kit/pbr';
-import { getCuttingMatTexture, paintOledCanvas } from './materials';
+import type { PlacedDisplaySurface } from './displayPainter';
+import { getCuttingMatTexture } from './materials';
 import { wireLengthCm } from '../engine/wireLength';
 import { buildWireGroup, DEFAULT_END, wireExit, wireRadius, type WireEnd } from './wireGeometry';
 import { NeighborField, ObstacleGrid, solveRope, type RopeObstacle, type V3 } from './wireRope';
@@ -53,6 +54,8 @@ export interface VehicleSnapshot {
   group: THREE.Group;
   /** What it is, by its parts: a ground rover, a quad, or neither. */
   vehicle: 'rover' | 'drone' | null;
+  /** Its screens: the copy shares their textures, so painting them updates the arena too. */
+  displays: PlacedDisplaySurface[];
 }
 
 /**
@@ -311,17 +314,11 @@ export class WorkbenchScene {
     this.liveMotors = motors;
   }
 
-  /**
-   * Updates all placed 0.96" OLED I2C displays with live sketch text lines.
-   */
-  public updateOledLines(lines: readonly string[]): void {
-    const powered = this.analysis.sensors.oledReady;
-    for (const handle of this.handles.values()) {
-      if (handle.oledCanvas && handle.oledTexture) {
-        paintOledCanvas(handle.oledCanvas, lines, powered);
-        handle.oledTexture.needsUpdate = true;
-      }
-    }
+  /** The screens of the display parts on the bench (OLED, LCD), for the display painter. */
+  public displaySurfaces(): PlacedDisplaySurface[] {
+    const out: PlacedDisplaySurface[] = [];
+    for (const handle of this.handles.values()) if (handle.display) out.push({ componentId: handle.componentId, surface: handle.display });
+    return out;
   }
 
   /**
@@ -509,7 +506,7 @@ export class WorkbenchScene {
     }
     const kinds = new Set(this.project.components.map((c) => c.kind));
     const vehicle = kinds.has('frame_quad_5in') || kinds.has('brushless_2207') ? 'drone' : kinds.has('chassis_2wd') || kinds.has('dc_motor') ? 'rover' : null;
-    return { group, vehicle };
+    return { group, vehicle, displays: this.displaySurfaces() };
   }
 
   public dispose(): void {
@@ -1020,6 +1017,16 @@ export class WorkbenchScene {
       this.finalCache = { key: finalKey, quality, paths: solved, tips: new Map(infos.map((w) => [w.wire.id, [w.a.clone(), w.b.clone()] as [THREE.Vector3, THREE.Vector3]])) };
     }
 
+    if (import.meta.env.DEV) {
+      // dev only: the browser checks in scripts/checks read the finished wire paths from here
+      (window as unknown as { __roboforgeWires?: unknown }).__roboforgeWires = infos.map((w) => ({
+        id: w.wire.id,
+        radius: w.radius,
+        from: w.wire.from,
+        to: w.wire.to,
+        points: solved.get(w.wire.id) ?? [],
+      }));
+    }
     for (const w of infos) {
       this.wireRoot.add(
         buildWireGroup(solved.get(w.wire.id) ?? [], w.a, w.b, {

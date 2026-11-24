@@ -1,4 +1,8 @@
 import { SKETCH_SOURCE_URL, transpileArduinoSketch, type SketchProblem } from './sketchTranspiler';
+import { MonoGfx, SSD1306_WHITE } from './displays/gfx';
+import { createDisplayLibraries } from './displays/libraries';
+import type { DisplayBench, Ssd1306Panel } from './displays/panels';
+import { decodeSketchText, encodeSketchText, formatPrintValue } from './printFormat';
 
 export type PinModeValue = 'INPUT' | 'OUTPUT' | 'INPUT_PULLUP';
 
@@ -27,7 +31,10 @@ export interface HardwareEnvironmentHooks {
   readYawRateDegPerSec: () => number;
   zeroYaw: () => void;
   readExternalPinHigh?: (pin: number) => boolean;
+  /** Lines shown by the simple `oled` helper (also drawn on the bench's OLED when `displays` is given). */
   onOledUpdate?: (lines: string[]) => void;
+  /** The display modules on the bench (OLED, LCD), driven by the display libraries and the `oled` helper. */
+  displays?: () => DisplayBench | null;
   onSerial: (entry: SerialEntry) => void;
   /** A fault while the sketch runs; `line` is the sketch line when it can be found from the stack. */
   onRuntimeError: (message: string, line?: number) => void;
@@ -123,6 +130,9 @@ export class VirtualEsp32Runtime {
   private lineOffset = 2;
   private ledcChannels = new Map<number, number>();
   private loopPromise: Promise<void> | null = null;
+  /** Hints already shown this run (each once). */
+  private hintsShown = new Set<string>();
+  private displayTick: ((now: number) => void) | null = null;
   private readonly hooks: HardwareEnvironmentHooks;
 
   constructor(hooks: HardwareEnvironmentHooks) {
@@ -161,7 +171,7 @@ export class VirtualEsp32Runtime {
    * Queues an incoming serial command line for `Serial.available()` / `Serial.readStringUntil()`.
    */
   public pushSerialInput(line: string): void {
-    this.serialRxQueue.push(line);
+    this.serialRxQueue.push(encodeSketchText(line));
     this.emitSerial(`> ${line}`, 'rx');
   }
 
@@ -207,6 +217,7 @@ export class VirtualEsp32Runtime {
     this.serialLineBuf = '';
     this.oledLines = [];
     this.oledCurLine = '';
+    this.hintsShown.clear();
     this.signalHistory = [];
     this.lastSampleMs = -100;
     this.stopRequested = false;
@@ -269,12 +280,14 @@ export class VirtualEsp32Runtime {
         return;
       }
       if (setupFn) await setupFn();
+      this.displayTick?.(this.nowMs());
       while (!this.stopRequested && loopFn) {
         if (!this.hooks.isEsp32Powered()) {
           this.emitSerial('Controller power lost — MCU halted.', 'error');
           break;
         }
         await loopFn();
+        this.displayTick?.(this.nowMs());
         // the board's loop task pauses between loop() calls, which also feeds the watchdog
         this.lastPauseReal = performance.now();
         await this.sleep(16);
@@ -341,15 +354,44 @@ export class VirtualEsp32Runtime {
       this.pinPwm.set(pin, clamped);
     };
 
-    /** Arduino-style printing: HEX/BIN/OCT/DEC for whole numbers, decimal places otherwise; bools print 1/0. */
-    const formatValue = (val: unknown, format?: number): string => {
-      if (typeof val === 'number' && typeof format === 'number') {
-        if (Number.isInteger(val) && (format === 2 || format === 8 || format === 16)) return (val >>> 0).toString(format).toUpperCase();
-        if (Number.isInteger(val) && format === 10) return String(val);
-        return val.toFixed(Math.max(0, Math.min(10, Math.round(format))));
+    const formatValue = formatPrintValue;
+    const libs = createDisplayLibraries({
+      bench: () => this.hooks.displays?.() ?? null,
+      nowMs: () => this.nowMs(),
+      hint: (text) => {
+        if (this.hintsShown.has(text)) return;
+        this.hintsShown.add(text);
+        this.emitSerial(text, 'warn');
+      },
+      checkStop,
+    });
+    this.displayTick = libs.tick;
+    /** The simple `oled` helper draws its lines with the built-in font on the first OLED that is wired. */
+    const helperGfx = new MonoGfx(128, 64);
+    const helperOled = (): Ssd1306Panel | null => {
+      const bench = this.hooks.displays?.();
+      if (!bench) return null;
+      for (const d of bench.wiring()) {
+        if (d.kind !== 'oled_ssd1306' || !d.powered || d.sdaGpio === null || d.sclGpio === null) continue;
+        const p = bench.panel(d.componentId);
+        if (p && p.type === 'oled') return p;
       }
-      if (typeof val === 'boolean') return val ? '1' : '0';
-      return String(val);
+      return null;
+    };
+    const drawHelperLines = () => {
+      const panel = helperOled();
+      if (!panel) return;
+      helperGfx.setRotation(0);
+      helperGfx._alloc();
+      helperGfx.setTextWrap(false);
+      helperGfx.setTextColor(SSD1306_WHITE);
+      this.oledLines.forEach((line, i) => {
+        helperGfx.setCursor(0, i * 8);
+        helperGfx.print(line);
+      });
+      panel.on = true;
+      panel.inverted = false;
+      panel.load(helperGfx._frame(), 128, 64);
     };
     /** delay()/yield(): sleeps and restarts the watchdog window. */
     const userPause = (ms: number) => {
@@ -372,6 +414,10 @@ export class VirtualEsp32Runtime {
       OCT: 8,
       DEC: 10,
       HEX: 16,
+      ...libs.constants,
+      Wire: libs.Wire,
+      Adafruit_SSD1306: libs.Adafruit_SSD1306,
+      LiquidCrystal_I2C: libs.LiquidCrystal_I2C,
       pinMode: (pin: number, mode: PinModeValue) => {
         checkStop();
         if (mode === 'OUTPUT' && INPUT_ONLY_PINS.has(pin)) {
@@ -473,7 +519,7 @@ export class VirtualEsp32Runtime {
         println: (val: unknown = '', format?: number) => {
           const line = this.serialLineBuf + formatValue(val, format);
           this.serialLineBuf = '';
-          this.emitSerial(line, 'info');
+          this.emitSerial(decodeSketchText(line), 'info');
         },
         available: () => this.serialRxQueue.length,
         readStringUntil: (_delim = '\n') => this.serialRxQueue.shift() ?? '',
@@ -500,6 +546,7 @@ export class VirtualEsp32Runtime {
           this.oledLines = [];
           this.oledCurLine = '';
           if (this.hooks.isOledReady?.() !== false) this.hooks.onOledUpdate?.([]);
+          drawHelperLines();
         },
         print: (val: unknown, format?: number) => {
           this.oledCurLine += formatValue(val, format);
@@ -507,8 +554,10 @@ export class VirtualEsp32Runtime {
         println: (val: unknown = '', format?: number) => {
           const line = this.oledCurLine + formatValue(val, format);
           this.oledCurLine = '';
-          this.oledLines = [...this.oledLines.slice(-4), line];
+          // eight rows of the built-in 6 x 8 font fit the 64-pixel screen; older lines scroll off the top
+          this.oledLines = [...this.oledLines.slice(-7), line];
           if (this.hooks.isOledReady?.() !== false) this.hooks.onOledUpdate?.(this.oledLines);
+          drawHelperLines();
         },
       },
     };

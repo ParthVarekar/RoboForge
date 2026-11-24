@@ -16,6 +16,8 @@ export const ComponentKindSchema = z.enum([
   'esp32_cam',
   'chassis_2wd',
   'oled_ssd1306',
+  'lcd1602_i2c',
+  'lcd2004_i2c',
   'tactile_button',
   'frame_quad_5in',
   'brushless_2207',

@@ -2,6 +2,7 @@ import type { ComponentKind } from '../../schema/projectSchema';
 import { buildEsp32Devkit } from './controllers';
 import { buildCap1000uf, buildLed5mm, buildResistor, buildTactileButton } from './discretes';
 import { buildCadBox, buildCadCylinder, buildCadPlate, buildCadStandoff, buildChassis2wd, buildFcStack, buildQuadFrame, buildVtxAntenna } from './frames';
+import { buildLcd1602, buildLcd2004 } from './displays';
 import { buildDrv8833, buildEsp32Cam, buildHcsr04, buildMpu6050, buildOled } from './modules';
 import { buildBattery2s, buildBrushless2207, buildLipo6s, buildLm2596, buildTtMotor } from './power';
 import type { PartBuilder } from './types';
@@ -19,6 +20,8 @@ export const PART_BUILDERS: Record<ComponentKind, PartBuilder> = {
   mpu6050: buildMpu6050,
   hcsr04: buildHcsr04,
   oled_ssd1306: buildOled,
+  lcd1602_i2c: buildLcd1602,
+  lcd2004_i2c: buildLcd2004,
   esp32_cam: buildEsp32Cam,
   tactile_button: buildTactileButton,
   dc_motor: buildTtMotor,
