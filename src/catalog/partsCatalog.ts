@@ -520,6 +520,23 @@ export const PARTS_CATALOG: Record<ComponentKind, PartSpec> = {
       { id: 'CATHODE', label: 'Cathode (-, flat side)', role: 'led_cathode', localPos: [0.527, 0.07, 0], contact: 'lead', dir: [1, 0, 0] },
     ],
   },
+  wire_splice: {
+    kind: 'wire_splice',
+    name: 'Solder Splice (heat-shrink)',
+    shortName: 'Splice',
+    category: 'Passives',
+    description: 'Joins several wires into one: the jumpers are soldered together and covered with heat-shrink. Use it to share a signal or a supply (I2C, 3V3, GND), since a header pin takes only one jumper.',
+    massGrams: 0.3,
+    unitPriceUsd: 0.05,
+    simulated: true,
+    idleCurrentMa: 0,
+    peakCurrentMa: 0,
+    sizeCm: [1.4, 0.36, 0.4],
+    defaultColor: '#1f2937',
+    roboforgePartId: 'wire_splice',
+    // one soldered joint on top of the sleeve: every wire lands on it
+    pins: [{ id: 'J', label: 'Splice (soldered joint)', role: 'passive', localPos: [0, 0.36, 0], contact: 'lead' }],
+  },
   cap_1000uf: {
     kind: 'cap_1000uf',
     name: '1000uF 16V Electrolytic Cap',

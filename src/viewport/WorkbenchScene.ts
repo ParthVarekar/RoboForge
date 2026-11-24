@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { getPinSpec } from '../catalog/partsCatalog';
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
 import { pinKey } from '../engine/circuit';
+import { pinRefusal } from '../engine/pinCapacity';
 import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 import { buildComponentGroup, setPinHaloVisible, type ComponentVisualHandle } from './componentMeshes';
 import { disposeObject } from './kit/pbr';
@@ -26,6 +27,8 @@ export interface PinHoverInfo {
   pinLabel: string;
   voltageText: string;
   pwmValue: number | null;
+  /** Set when the pin cannot take another wire (a header pin that already has its jumper). */
+  fullNote?: string;
 }
 
 export interface MeasureResult {
@@ -46,6 +49,8 @@ export interface WorkbenchCallbacks {
   onMeasureUpdate: (res: MeasureResult | null) => void;
   onCameraAzimuthChange: (azimuthRad: number, polarRad: number) => void;
   onButtonPress: (componentId: string, pressed: boolean) => void;
+  /** A wire was not started or finished because the pin is full; `text` says why and what to do. */
+  onWireRefused?: (text: string) => void;
   onAddWireWaypoint: (wireId: string, point: Vec3) => void;
 }
 
@@ -1154,7 +1159,8 @@ export class WorkbenchScene {
             ? `${((pwmValue / 255) * 3.3).toFixed(2)} V (PWM ${pwmValue})`
             : 'Floating';
 
-      this.renderer.domElement.style.cursor = 'crosshair';
+      const full = pinRefusal(this.project, { componentId: ud.componentId, pinId: ud.pinId });
+      this.renderer.domElement.style.cursor = full && (this.tool === 'wire' || this.pendingPin) ? 'not-allowed' : 'crosshair';
       this.callbacks.onHoverPin({
         screenX: ev.clientX,
         screenY: ev.clientY,
@@ -1162,6 +1168,7 @@ export class WorkbenchScene {
         pinLabel: ud.label,
         voltageText,
         pwmValue,
+        fullNote: full ? 'Has its jumper (one per header pin)' : undefined,
       });
 
       if (this.pendingPin) {
@@ -1295,6 +1302,13 @@ export class WorkbenchScene {
     if (pinHits[0]) {
       const ud = pinHits[0].object.userData as { componentId: string; pinId: string };
       const ref: WirePinRef = { componentId: ud.componentId, pinId: ud.pinId };
+      const samePin = this.pendingPin && this.pendingPin.componentId === ref.componentId && this.pendingPin.pinId === ref.pinId;
+      const refusal = samePin ? null : pinRefusal(this.project, ref);
+      if (refusal) {
+        // a header pin holds one DuPont socket: neither start nor finish a second jumper on it
+        this.callbacks.onWireRefused?.(refusal);
+        return;
+      }
       if (!this.pendingPin) {
         this.pendingPin = ref;
         this.updatePinHalos();

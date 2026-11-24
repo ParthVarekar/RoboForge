@@ -1,5 +1,6 @@
 import { getPartSpec, getPinSpec, type PinSpec } from '../catalog/partsCatalog';
 import { DEFAULT_I2C_ADDRESS, type I2cDeviceWiring } from './displays/panels';
+import { overloadedPins } from './pinCapacity';
 import { SOCKET_RISE_CM, wireLengthCm } from './wireLength';
 import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 
@@ -817,6 +818,18 @@ export function analyzeCircuit(project: StudioProject): CircuitAnalysis {
   checkPowerAndVoltage(nets, diagnostics, faultyComponentIds);
   checkPinRolesAndCommonGround(project, pinToNet, diagnostics);
   const sensors = resolveSensorsAndCheck(project, pinToNet, diagnostics);
+  for (const over of overloadedPins(project)) {
+    const comp = project.components.find((c) => c.id === over.ref.componentId);
+    const label = comp ? (getPinSpec(comp.kind, over.ref.pinId)?.label ?? over.ref.pinId) : over.ref.pinId;
+    diagnostics.push({
+      id: `pin-overloaded-${over.ref.componentId}-${over.ref.pinId}`,
+      severity: 'error',
+      title: `${over.wireIds.length} jumpers on ${comp?.label ?? over.ref.componentId} ${label}`,
+      detail: 'A 2.54 mm header pin takes one DuPont socket, so only one jumper fits; the others could not be plugged in on the real board.',
+      fix: 'Keep one jumper on the pin, run it to a solder splice (Passives) and branch the other wires from the splice.',
+      componentIds: comp ? [comp.id] : [],
+    });
+  }
   const motors = resolveMotors(project, pinToNet);
   const budget = computeBudget(project);
 

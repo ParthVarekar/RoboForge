@@ -56,6 +56,16 @@ export function getPartThumbnailSvg(kind: ComponentKind): string {
         <text x="60" y="37" font-size="8" font-family="monospace" text-anchor="middle" fill="#38bdf8">YAW 0.0°</text>
         <text x="60" y="49" font-size="8" font-family="monospace" text-anchor="middle" fill="#38bdf8">DST 42cm</text>
       `);
+    case 'wire_splice':
+      return wrap(`
+        <line x1="8" y1="26" x2="48" y2="38" stroke="#ef4444" stroke-width="3"/>
+        <line x1="8" y1="50" x2="48" y2="40" stroke="#3b82f6" stroke-width="3"/>
+        <line x1="72" y1="38" x2="112" y2="22" stroke="#22c55e" stroke-width="3"/>
+        <line x1="72" y1="40" x2="112" y2="56" stroke="#eab308" stroke-width="3"/>
+        <rect x="30" y="32" width="22" height="13" rx="5" fill="#1f2937"/>
+        <rect x="68" y="32" width="22" height="13" rx="5" fill="#1f2937"/>
+        <ellipse cx="60" cy="38" rx="11" ry="7" fill="#cbd5e1" stroke="#94a3b8"/>
+      `);
     case 'lcd1602_i2c':
       return wrap(`
         <rect x="8" y="14" width="104" height="48" rx="2" fill="#1f7a3a" stroke="#14532d" stroke-width="1.5"/>

@@ -536,24 +536,29 @@ function makeRoboForgeRoverPreset(): StudioProject {
       { id: 'cam_1', kind: 'esp32_cam', label: 'ESP32-CAM', position: [4.2, 0.45, -8.0], rotationY: 0 },
       { id: 'res_led', kind: 'resistor_10k', label: 'R3 LED Res', position: [0.2, 0.45, -1.2], rotationY: 0 },
       { id: 'led_1', kind: 'led_5mm', label: 'Status LED', position: [0.2, 0.45, -2.8], rotationY: 0, color: '#22c55e' },
+      // soldered splices where one ESP32 pin feeds two modules (a header pin takes only one jumper)
+      { id: 'sp_3v3', kind: 'wire_splice', label: 'Splice 3V3', position: [-6.0, 0.45, -3.3], rotationY: Math.PI / 2 },
+      { id: 'sp_gnd', kind: 'wire_splice', label: 'Splice GND', position: [-5.2, 0.45, -3.3], rotationY: Math.PI / 2 },
+      { id: 'sp_sda', kind: 'wire_splice', label: 'Splice SDA', position: [-1.8, 0.45, -3.3], rotationY: Math.PI / 2 },
+      { id: 'sp_scl', kind: 'wire_splice', label: 'Splice SCL', position: [-1.0, 0.45, -3.3], rotationY: Math.PI / 2 },
     ],
     wires: [
       { id: 'w1', from: { componentId: 'bat_1', pinId: 'BAT_POS' }, to: { componentId: 'buck_1', pinId: 'IN_POS' }, color: '#ef4444', style: 'routed' },
       { id: 'w2', from: { componentId: 'bat_1', pinId: 'GND' }, to: { componentId: 'buck_1', pinId: 'IN_NEG' }, color: '#1e293b', style: 'routed' },
       { id: 'w3', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'esp32_1', pinId: 'VIN' }, color: '#ef4444', style: 'routed' },
-      { id: 'w4', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'drv_1', pinId: 'VM' }, color: '#ef4444', style: 'routed' },
+      { id: 'w4', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'cap_1', pinId: 'POS' }, color: '#ef4444', style: 'routed' },
       { id: 'w5', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'us_1', pinId: 'VCC' }, color: '#ef4444', style: 'routed' },
       { id: 'w6', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'cam_1', pinId: '5V' }, color: '#ef4444', style: 'routed' },
 
       { id: 'w7', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'esp32_1', pinId: 'GND_R' }, color: '#1e293b', style: 'routed' },
-      { id: 'w8', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'drv_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
-      { id: 'w9', from: { componentId: 'esp32_1', pinId: 'GND_L' }, to: { componentId: 'mpu_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
-      { id: 'w10', from: { componentId: 'mpu_1', pinId: 'GND' }, to: { componentId: 'mpu_1', pinId: 'AD0' }, color: '#1e293b', style: 'routed' },
+      { id: 'w8', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'cap_1', pinId: 'NEG' }, color: '#1e293b', style: 'routed' },
+      { id: 'w9', from: { componentId: 'esp32_1', pinId: 'GND_L' }, to: { componentId: 'sp_gnd', pinId: 'J' }, color: '#1e293b', style: 'routed' },
+      { id: 'w10', from: { componentId: 'sp_gnd', pinId: 'J' }, to: { componentId: 'mpu_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
       { id: 'w11', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'us_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
       { id: 'w12', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'cam_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
 
-      { id: 'w13', from: { componentId: 'drv_1', pinId: 'VM' }, to: { componentId: 'cap_1', pinId: 'POS' }, color: '#dc2626', style: 'routed' },
-      { id: 'w14', from: { componentId: 'drv_1', pinId: 'GND' }, to: { componentId: 'cap_1', pinId: 'NEG' }, color: '#0f172a', style: 'routed' },
+      { id: 'w13', from: { componentId: 'cap_1', pinId: 'POS' }, to: { componentId: 'drv_1', pinId: 'VM' }, color: '#dc2626', style: 'routed' },
+      { id: 'w14', from: { componentId: 'cap_1', pinId: 'NEG' }, to: { componentId: 'drv_1', pinId: 'GND' }, color: '#0f172a', style: 'routed' },
 
       { id: 'w15', from: { componentId: 'esp32_1', pinId: 'GPIO25' }, to: { componentId: 'drv_1', pinId: 'IN1' }, color: '#f97316', style: 'routed' },
       { id: 'w16', from: { componentId: 'esp32_1', pinId: 'GPIO26' }, to: { componentId: 'drv_1', pinId: 'IN2' }, color: '#eab308', style: 'routed' },
@@ -565,25 +570,28 @@ function makeRoboForgeRoverPreset(): StudioProject {
       { id: 'w21', from: { componentId: 'drv_1', pinId: 'OUT3' }, to: { componentId: 'motor_r', pinId: 'M_POS' }, color: '#4ade80', style: 'routed' },
       { id: 'w22', from: { componentId: 'drv_1', pinId: 'OUT4' }, to: { componentId: 'motor_r', pinId: 'M_NEG' }, color: '#22d3ee', style: 'routed' },
 
-      { id: 'w23', from: { componentId: 'esp32_1', pinId: '3V3' }, to: { componentId: 'mpu_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
-      { id: 'w24', from: { componentId: 'esp32_1', pinId: 'GPIO32' }, to: { componentId: 'mpu_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
-      { id: 'w25', from: { componentId: 'esp32_1', pinId: 'GPIO33' }, to: { componentId: 'mpu_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+      { id: 'w23', from: { componentId: 'esp32_1', pinId: '3V3' }, to: { componentId: 'sp_3v3', pinId: 'J' }, color: '#f43f5e', style: 'routed' },
+      { id: 'w23b', from: { componentId: 'sp_3v3', pinId: 'J' }, to: { componentId: 'mpu_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
+      { id: 'w24', from: { componentId: 'esp32_1', pinId: 'GPIO32' }, to: { componentId: 'sp_sda', pinId: 'J' }, color: '#3b82f6', style: 'routed' },
+      { id: 'w24b', from: { componentId: 'sp_sda', pinId: 'J' }, to: { componentId: 'mpu_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'w25', from: { componentId: 'esp32_1', pinId: 'GPIO33' }, to: { componentId: 'sp_scl', pinId: 'J' }, color: '#a855f7', style: 'routed' },
+      { id: 'w25b', from: { componentId: 'sp_scl', pinId: 'J' }, to: { componentId: 'mpu_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
 
       // OLED shares I2C bus (3V3, GND, SDA, SCL)
-      { id: 'w34', from: { componentId: 'mpu_1', pinId: 'VCC' }, to: { componentId: 'oled_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
-      { id: 'w35', from: { componentId: 'mpu_1', pinId: 'GND' }, to: { componentId: 'oled_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
-      { id: 'w36', from: { componentId: 'mpu_1', pinId: 'SDA' }, to: { componentId: 'oled_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
-      { id: 'w37', from: { componentId: 'mpu_1', pinId: 'SCL' }, to: { componentId: 'oled_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+      { id: 'w34', from: { componentId: 'sp_3v3', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
+      { id: 'w35', from: { componentId: 'sp_gnd', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
+      { id: 'w36', from: { componentId: 'sp_sda', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'w37', from: { componentId: 'sp_scl', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
 
       { id: 'w26', from: { componentId: 'esp32_1', pinId: 'GPIO13' }, to: { componentId: 'us_1', pinId: 'TRIG' }, color: '#14b8a6', style: 'routed' },
       { id: 'w27', from: { componentId: 'us_1', pinId: 'ECHO' }, to: { componentId: 'res_top', pinId: 'B' }, color: '#ec4899', style: 'routed' },
       { id: 'w28', from: { componentId: 'res_top', pinId: 'A' }, to: { componentId: 'esp32_1', pinId: 'GPIO35' }, color: '#f472b6', style: 'routed' },
-      { id: 'w29', from: { componentId: 'esp32_1', pinId: 'GPIO35' }, to: { componentId: 'res_bot', pinId: 'A' }, color: '#94a3b8', style: 'routed' },
-      { id: 'w30', from: { componentId: 'res_bot', pinId: 'B' }, to: { componentId: 'esp32_1', pinId: 'GND_L' }, color: '#1e293b', style: 'routed' },
+      { id: 'w29', from: { componentId: 'res_top', pinId: 'A' }, to: { componentId: 'res_bot', pinId: 'A' }, color: '#94a3b8', style: 'routed' },
+      { id: 'w30', from: { componentId: 'res_bot', pinId: 'B' }, to: { componentId: 'sp_gnd', pinId: 'J' }, color: '#1e293b', style: 'routed' },
 
       { id: 'w31', from: { componentId: 'esp32_1', pinId: 'GPIO4' }, to: { componentId: 'res_led', pinId: 'A' }, color: '#84cc16', style: 'routed' },
       { id: 'w32', from: { componentId: 'res_led', pinId: 'B' }, to: { componentId: 'led_1', pinId: 'ANODE' }, color: '#84cc16', style: 'routed' },
-      { id: 'w33', from: { componentId: 'led_1', pinId: 'CATHODE' }, to: { componentId: 'esp32_1', pinId: 'GND_R' }, color: '#1e293b', style: 'routed' },
+      { id: 'w33', from: { componentId: 'led_1', pinId: 'CATHODE' }, to: { componentId: 'sp_gnd', pinId: 'J' }, color: '#1e293b', style: 'routed' },
     ],
   };
 }
@@ -640,6 +648,8 @@ function makeFaultLabPreset(): StudioProject {
       { id: 'wf2', from: { componentId: 'esp32_1', pinId: 'GPIO4' }, to: { componentId: 'led_1', pinId: 'ANODE' }, color: '#84cc16', style: 'routed' },
       { id: 'wf3', from: { componentId: 'drv_1', pinId: 'OUT3' }, to: { componentId: 'motor_r', pinId: 'M_NEG' }, color: '#4ade80', style: 'routed' },
       { id: 'wf4', from: { componentId: 'drv_1', pinId: 'OUT4' }, to: { componentId: 'motor_r', pinId: 'M_POS' }, color: '#22d3ee', style: 'routed' },
+      { id: 'wf5', from: { componentId: 'buck_1', pinId: 'OUT_POS' }, to: { componentId: 'drv_1', pinId: 'VM' }, color: '#ef4444', style: 'routed' },
+      { id: 'wf6', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'drv_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
     ]);
 
   return {
@@ -686,6 +696,8 @@ function makeDisplayLabPreset(): StudioProject {
       { id: 'esp32_1', kind: 'esp32_devkit', label: 'ESP32 Main', position: [-6.5, 0, 0], rotationY: 0 },
       { id: 'oled_1', kind: 'oled_ssd1306', label: '0.96" OLED', position: [-0.6, 0, -5.6], rotationY: 0 },
       { id: 'lcd_1', kind: 'lcd1602_i2c', label: 'LCD 16x2', position: [6.4, 0, -1.4], rotationY: 0 },
+      { id: 'sp_sda', kind: 'wire_splice', label: 'Splice SDA', position: [-1.6, 0, -1.2], rotationY: Math.PI / 2 },
+      { id: 'sp_scl', kind: 'wire_splice', label: 'Splice SCL', position: [-0.6, 0, -1.2], rotationY: Math.PI / 2 },
       { id: 'buck_1', kind: 'lm2596_buck', label: 'LM2596 5.2V', position: [-1.2, 0, 6.0], rotationY: 0 },
       { id: 'bat_1', kind: 'battery_2s', label: '2S Li-Ion 7.4V', position: [-8.0, 0, 9.6], rotationY: 0 },
     ],
@@ -698,10 +710,12 @@ function makeDisplayLabPreset(): StudioProject {
       { id: 'd6', from: { componentId: 'buck_1', pinId: 'OUT_NEG' }, to: { componentId: 'lcd_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
       { id: 'd7', from: { componentId: 'esp32_1', pinId: '3V3' }, to: { componentId: 'oled_1', pinId: 'VCC' }, color: '#f43f5e', style: 'routed' },
       { id: 'd8', from: { componentId: 'esp32_1', pinId: 'GND_R' }, to: { componentId: 'oled_1', pinId: 'GND' }, color: '#1e293b', style: 'routed' },
-      { id: 'd9', from: { componentId: 'esp32_1', pinId: 'GPIO21' }, to: { componentId: 'oled_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
-      { id: 'd10', from: { componentId: 'esp32_1', pinId: 'GPIO22' }, to: { componentId: 'oled_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
-      { id: 'd11', from: { componentId: 'esp32_1', pinId: 'GPIO21' }, to: { componentId: 'lcd_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
-      { id: 'd12', from: { componentId: 'esp32_1', pinId: 'GPIO22' }, to: { componentId: 'lcd_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+      { id: 'd9', from: { componentId: 'esp32_1', pinId: 'GPIO21' }, to: { componentId: 'sp_sda', pinId: 'J' }, color: '#3b82f6', style: 'routed' },
+      { id: 'd10', from: { componentId: 'esp32_1', pinId: 'GPIO22' }, to: { componentId: 'sp_scl', pinId: 'J' }, color: '#a855f7', style: 'routed' },
+      { id: 'd11', from: { componentId: 'sp_sda', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'd12', from: { componentId: 'sp_scl', pinId: 'J' }, to: { componentId: 'oled_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
+      { id: 'd13', from: { componentId: 'sp_sda', pinId: 'J' }, to: { componentId: 'lcd_1', pinId: 'SDA' }, color: '#3b82f6', style: 'routed' },
+      { id: 'd14', from: { componentId: 'sp_scl', pinId: 'J' }, to: { componentId: 'lcd_1', pinId: 'SCL' }, color: '#a855f7', style: 'routed' },
     ],
   };
 }

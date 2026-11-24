@@ -33,6 +33,7 @@ import {
 } from './engine/arenaPhysics';
 import { analyzeCircuit, resolveMotorDrives, type MotorDriveOutput } from './engine/circuit';
 import { DisplayBench } from './engine/displays/panels';
+import { pinRefusal } from './engine/pinCapacity';
 import { VirtualEsp32Runtime, type SerialEntry } from './engine/runtime';
 import type { SketchProblem } from './engine/sketchTranspiler';
 import {
@@ -564,6 +565,8 @@ export function App(): React.ReactElement {
   };
 
   const handleConnectPins = (from: WirePinRef, to: WirePinRef) => {
+    // the bench refuses these already; this keeps any other caller to the same rule
+    if (pinRefusal(project, from) || pinRefusal(project, to)) return;
     const id = `w_${Date.now().toString(36).slice(-5)}`;
     const color =
       from.pinId.includes('GND') || to.pinId.includes('GND')

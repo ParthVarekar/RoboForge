@@ -44,6 +44,15 @@ const TOUCH_MM = 0.04; // a pair closer than this (in cm, below) counts as touch
     if (!hash.has(key)) hash.set(key, []);
     hash.get(key).push([wi, k]);
   }));
+  const endAt = (w, end) => (end === 'from' ? w.points[0] : w.points[w.points.length - 1]);
+  const nearSharedEnd = (a, b, p) => {
+    for (const ea of ['from', 'to']) for (const eb of ['from', 'to']) {
+      if (a[ea].componentId !== b[eb].componentId || a[ea].pinId !== b[eb].pinId) continue;
+      const q = endAt(a, ea);
+      if (q && Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 0.35) return true;
+    }
+    return false;
+  };
   const worst = new Map();
   samples.forEach((pts, wi) => pts.forEach((p) => {
     const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell), cz = Math.floor(p[2] / cell);
@@ -53,6 +62,8 @@ const TOUCH_MM = 0.04; // a pair closer than this (in cm, below) counts as touch
         const q = samples[wj][k];
         const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
         const pen = wires[wi].radius + wires[wj].radius - d;
+        // two wires soldered to the same lead or splice meet at that joint: contact there is the joint itself
+        if (pen > TOUCH_MM && nearSharedEnd(wires[wi], wires[wj], p)) continue;
         if (pen > TOUCH_MM) {
           const id = `${wires[wi].id} x ${wires[wj].id}`;
           if (!worst.has(id) || worst.get(id).pen < pen) worst.set(id, { pen, at: p.map((v) => v.toFixed(2)).join(',') });

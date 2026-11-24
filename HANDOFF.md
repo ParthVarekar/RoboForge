@@ -747,6 +747,19 @@ What the user asked for: "make the displays configurable by code ... whatever yo
 
 ---
 
+### 11.7 One jumper per header pin, solder splices (added 2026-11-24)
+A 2.54 mm header pin takes one DuPont socket, so `engine/pinCapacity.ts` gives header pins a capacity of 1 and soldered
+points (`contact: 'lead'`: resistor / LED / capacitor leads, buck and FC pads, motor tabs, battery leads, splices) no
+limit. The bench refuses to start or finish a wire on a full pin (`pinRefusal`, red tooltip line "Has its jumper", a
+notice saying to use a splice); `App.handleConnectPins` checks again; `analyzeCircuit` reports `pin-overloaded-*` errors
+for imported or older builds (`overloadedPins`). The new part `wire_splice` (Passives, one soldered pin `J`) joins several
+wires. The presets were rewired to match: the rover feeds 3V3, GND, SDA and SCL to the MPU6050 and OLED through four
+splices (`sp_3v3`, `sp_gnd`, `sp_sda`, `sp_scl`), the driver's VM/GND come through the bulk capacitor's leads, the ECHO
+divider resistors are soldered together at the GPIO35 end, and the MPU's AD0 strap is gone (the GY-521 pulls AD0 low
+itself). The Display Lab splits GPIO21/22 at two splices; the fault lab feeds the driver straight from the buck. Tests:
+`engine/__tests__/pinCapacity.test.ts`. `scripts/checks/wire_overlap.cjs` ignores contact within 3.5 mm of a shared
+soldered end.
+
 ## 12. The reality-gap model and the Twin tab
 
 `TwinFaultConfig` (section 6) is edited in the Twin tab, and by the arena's Real Rover Profile and Ideal Sim buttons.

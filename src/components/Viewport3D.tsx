@@ -136,6 +136,15 @@ export function Viewport3D({
   const [cameraMode, setCameraMode] = useState<ArenaCameraMode>('chase');
   const [showCamPip, setShowCamPip] = useState(true);
   const [hoverPin, setHoverPin] = useState<PinHoverInfo | null>(null);
+  const [wireNotice, setWireNotice] = useState<string | null>(null);
+  const wireNoticeTimer = useRef<number | null>(null);
+  const showWireNotice = (text: string) => {
+    setWireNotice(text);
+    if (wireNoticeTimer.current !== null) window.clearTimeout(wireNoticeTimer.current);
+    wireNoticeTimer.current = window.setTimeout(() => setWireNotice(null), 5000);
+  };
+  const showWireNoticeRef = useRef(showWireNotice);
+  showWireNoticeRef.current = showWireNotice;
   const [pendingWire, setPendingWire] = useState<WirePinRef | null>(null);
   const [measureRes, setMeasureRes] = useState<MeasureResult | null>(null);
   const [gizmoAngles, setGizmoAngles] = useState({ az: 0.65, pol: 0.85 });
@@ -193,6 +202,7 @@ export function Viewport3D({
         onMeasureUpdate: setMeasureRes,
         onCameraAzimuthChange: (az, pol) => setGizmoAngles({ az, pol }),
         onButtonPress: (cid, pressed) => callbacksRef.current.onButtonPress(cid, pressed),
+        onWireRefused: (text) => showWireNoticeRef.current(text),
       });
       bench.setTool(tool);
       bench.setShowMat(showMat);
@@ -698,6 +708,13 @@ export function Viewport3D({
           <div style={{ fontFamily: 'var(--font-mono)', color: '#fbbf24', marginTop: 2 }}>
             Net: {hoverPin.voltageText}
           </div>
+          {hoverPin.fullNote && <div style={{ color: '#f87171', marginTop: 2 }}>{hoverPin.fullNote}</div>}
+        </div>
+      )}
+
+      {wireNotice && (
+        <div className="wire-notice" role="status">
+          {wireNotice}
         </div>
       )}
     </div>

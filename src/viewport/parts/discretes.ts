@@ -20,6 +20,24 @@ function footLeg(group: THREE.Group, x: number, yTop: number, footX: number, foo
   group.add(leadTube([v3(x, yTop, 0), v3(x, footY, 0), v3(footX, footY, 0)], radius, PBR.tin(), radius * 4));
 }
 
+/* ================================================================== solder splice */
+
+/**
+ * A soldered splice lying on the deck: a 14 mm length of black 3.2 mm heat-shrink with the bright solder joint where
+ * the wires meet showing through its open middle.
+ */
+export const buildWireSplice: PartBuilder = ({ group }) => {
+  const r = 1.6 * MM;
+  const sleeve = new THREE.CylinderGeometry(r, r, 5.2 * MM, 20);
+  sleeve.rotateZ(Math.PI / 2);
+  for (const sx of [-1, 1]) add(group, sleeve, plastic(0x18191c, 0.55, 0.25), sx * 4.4 * MM, r, 0);
+  // the joint: twisted, tinned strands under a blob of solder
+  const core = new THREE.CylinderGeometry(0.9 * MM, 0.9 * MM, 4.2 * MM, 16);
+  core.rotateZ(Math.PI / 2);
+  add(group, core, PBR.solder(), 0, r, 0);
+  add(group, new THREE.SphereGeometry(1.5 * MM, 18, 12), PBR.solder(), 0, r + 0.5 * MM, 0).scale.set(1.3, 0.8, 1);
+};
+
 /* ================================================================== 6 x 6 mm tactile switch */
 
 /**

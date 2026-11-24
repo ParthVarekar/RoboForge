@@ -13,6 +13,7 @@ export const ComponentKindSchema = z.enum([
   'resistor_10k',
   'led_5mm',
   'cap_1000uf',
+  'wire_splice',
   'esp32_cam',
   'chassis_2wd',
   'oled_ssd1306',

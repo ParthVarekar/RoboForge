@@ -1,6 +1,6 @@
 import type { ComponentKind } from '../../schema/projectSchema';
 import { buildEsp32Devkit } from './controllers';
-import { buildCap1000uf, buildLed5mm, buildResistor, buildTactileButton } from './discretes';
+import { buildCap1000uf, buildLed5mm, buildResistor, buildTactileButton, buildWireSplice } from './discretes';
 import { buildCadBox, buildCadCylinder, buildCadPlate, buildCadStandoff, buildChassis2wd, buildFcStack, buildQuadFrame, buildVtxAntenna } from './frames';
 import { buildLcd1602, buildLcd2004 } from './displays';
 import { buildDrv8833, buildEsp32Cam, buildHcsr04, buildMpu6050, buildOled } from './modules';
@@ -31,6 +31,7 @@ export const PART_BUILDERS: Record<ComponentKind, PartBuilder> = {
   lm2596_buck: buildLm2596,
   resistor_10k: buildResistor,
   led_5mm: buildLed5mm,
+  wire_splice: buildWireSplice,
   cap_1000uf: buildCap1000uf,
   chassis_2wd: buildChassis2wd,
   frame_quad_5in: buildQuadFrame,
