@@ -31,6 +31,7 @@ import {
   type BenchCameraView,
   type MeasureResult,
   type PinHoverInfo,
+  type VehicleSnapshot,
   type WorkbenchTool,
 } from '../viewport/WorkbenchScene';
 import { AxisGizmo } from './AxisGizmo';
@@ -124,6 +125,8 @@ export function Viewport3D({
 }: Viewport3DProps): React.ReactElement {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const benchSceneRef = useRef<WorkbenchScene | null>(null);
+  /** The bench build as it was when the arena opened, so the arena drives the same model. */
+  const vehicleSnapshotRef = useRef<VehicleSnapshot | null>(null);
   const arenaSceneRef = useRef<ArenaScene | null>(null);
 
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -204,6 +207,7 @@ export function Viewport3D({
         setHoverPin(null);
         setPendingWire(null);
         setMeasureRes(null);
+        vehicleSnapshotRef.current = bench.snapshotModel();
         bench.dispose();
         benchSceneRef.current = null;
       };
@@ -215,6 +219,7 @@ export function Viewport3D({
       onPlaceObstacle: (kind, x, z) => callbacksRef.current.onPlaceObstacle(kind, x, z),
       onDrawWall: (cx, cz, len, rot) => callbacksRef.current.onDrawWall(cx, cz, len, rot),
     });
+    arena.setVehicleModel(vehicleSnapshotRef.current);
     arena.setCameraMode(cameraMode);
     arena.setEditTool(arenaEditTool);
     arena.setSelectedObstacle(selectedObstacleId);

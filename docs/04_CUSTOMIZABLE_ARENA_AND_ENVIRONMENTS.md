@@ -76,6 +76,8 @@ Clicking any of the 10 element tools enters live floor-placement mode (with a tr
 
 ## 5. Dual Vehicle Physics: 2WD Rover vs 5" Quadcopter Drone
 
+**The vehicle is the one on the bench.** When you open the Arena, the build on the bench is copied in as it stands, every part and every laid wire at real size (`arenaVehicle.ts`, `WorkbenchScene.snapshotModel`); its wheels and propellers spin and its status LED follows the sketch. If the bench holds something that is not this kind of vehicle, the arena uses the bench's ready-made 2WD rover or 5" quad, built by the same part builders. The arena gets the bench's studio reflections, and the Chase camera sits close behind so the build itself is visible.
+
 The `VEHICLE` toggle in the `Twin` panel (which auto-selects **`5" Drone`** whenever `frame_quad_5in` or `fc_esc_stack` is on the workbench, and **`2WD Rover`** otherwise) switches both the 3D vehicle model and the physics engine:
 
 1. **2WD Ground Rover (`vehicleMode === 'rover'`):**

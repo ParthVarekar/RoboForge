@@ -10,7 +10,10 @@ import {
   type ArenaObstacleKind,
   type Vec3,
 } from '../schema/projectSchema';
-import { buildArenaDroneModel, buildArenaObstacleGroup, buildArenaRoverModel } from './arenaMeshes';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { buildArenaObstacleGroup } from './arenaMeshes';
+import { buildArenaVehicle, type ArenaVehicleVisual } from './arenaVehicle';
+import type { VehicleSnapshot } from './WorkbenchScene';
 import { getConcreteFloorTexture, getGrassGroundTexture } from './materials';
 
 export type ArenaCameraMode = 'orbit' | 'chase' | 'top';
@@ -46,8 +49,9 @@ export class ArenaScene {
   private readonly obstacleRoot = new THREE.Group();
   private readonly obstacleGroups = new Map<string, THREE.Group>();
 
-  private roverVisual!: ReturnType<typeof buildArenaRoverModel>;
-  private droneVisual!: ReturnType<typeof buildArenaDroneModel>;
+  private roverVisual!: ArenaVehicleVisual;
+  private droneVisual!: ArenaVehicleVisual;
+  private envTarget: THREE.WebGLRenderTarget | null = null;
   private ambientLight!: THREE.AmbientLight;
   private hemiLight!: THREE.HemisphereLight;
   private sunLight!: THREE.DirectionalLight;
@@ -265,15 +269,15 @@ export class ArenaScene {
     );
 
     if (this.vehicleMode === 'rover') {
-      this.roverVisual.leftWheel.rotation.x -= telemetry.leftWheelCmd * dt * 12;
-      this.roverVisual.rightWheel.rotation.x -= telemetry.rightWheelCmd * dt * 12;
-      this.roverVisual.statusLedMat.emissiveIntensity = 0.15 + (statusLedPwm / 255) * 2.4;
+      for (const w of this.roverVisual.leftWheels) w.rotation.x -= telemetry.leftWheelCmd * dt * 12;
+      for (const w of this.roverVisual.rightWheels) w.rotation.x -= telemetry.rightWheelCmd * dt * 12;
+      for (const m of this.roverVisual.leds) m.emissiveIntensity = 0.15 + (statusLedPwm / 255) * 2.4;
     } else {
       const spin = (0.18 + telemetry.propThrottle * 1.6) * dt * 44;
       this.droneVisual.props.forEach((p, idx) => {
         p.rotation.y += idx % 2 === 0 ? spin : -spin;
       });
-      this.droneVisual.statusLedMat.emissiveIntensity = 0.4 + telemetry.propThrottle * 1.8;
+      for (const m of this.droneVisual.leds) m.emissiveIntensity = 0.4 + telemetry.propThrottle * 1.8;
     }
 
     this.updateUltrasonicVisual(telemetry);
@@ -326,6 +330,7 @@ export class ArenaScene {
     this.unbindEvents();
     this.transform.dispose();
     this.orbit.dispose();
+    this.envTarget?.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -333,6 +338,13 @@ export class ArenaScene {
   }
 
   private setupLighting(): void {
+    // the same soft studio reflections as the bench, so metal, solder mask and plastics read the same here
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envTarget = pmrem.fromScene(new RoomEnvironment(), 0.035);
+    this.scene.environment = this.envTarget.texture;
+    this.scene.environmentIntensity = 0.45;
+    pmrem.dispose();
+
     this.ambientLight = new THREE.AmbientLight(0xdbeafe, 0.75);
     this.scene.add(this.ambientLight);
 
@@ -347,9 +359,19 @@ export class ArenaScene {
     this.scene.add(this.sunLight);
   }
 
-  private buildVehicles(): void {
-    this.roverVisual = buildArenaRoverModel();
-    this.droneVisual = buildArenaDroneModel();
+  /**
+   * Shows the vehicles as they look on the bench: the user's own build when it is a rover or a quad (from
+   * `WorkbenchScene.snapshotModel`), otherwise the bench's ready-made rover and quad.
+   */
+  public setVehicleModel(snapshot: VehicleSnapshot | null): void {
+    this.buildVehicles(snapshot);
+  }
+
+  private buildVehicles(snapshot: VehicleSnapshot | null = null): void {
+    if (this.roverVisual) this.vehicleRoot.remove(this.roverVisual.group);
+    if (this.droneVisual) this.vehicleRoot.remove(this.droneVisual.group);
+    this.roverVisual = buildArenaVehicle('rover', snapshot);
+    this.droneVisual = buildArenaVehicle('drone', snapshot);
     this.roverVisual.group.visible = this.vehicleMode === 'rover';
     this.droneVisual.group.visible = this.vehicleMode === 'drone';
     this.vehicleRoot.add(this.roverVisual.group, this.droneVisual.group);
@@ -754,13 +776,15 @@ export class ArenaScene {
   private updateCamera(): void {
     const pos = this.vehicleRoot.position;
     if (this.cameraMode === 'chase') {
-      const distBack = this.vehicleMode === 'drone' ? 1.85 : 1.35;
-      const liftY = this.vehicleMode === 'drone' ? 0.95 : 0.85;
+      // close enough to see the build itself (it is real size: a 22 cm rover, a 25 cm quad), looking a little ahead
+      const distBack = this.vehicleMode === 'drone' ? 0.8 : 0.55;
+      const liftY = this.vehicleMode === 'drone' ? 0.45 : 0.32;
       const yawOnly = new THREE.Euler(0, new THREE.Euler().setFromQuaternion(this.vehicleRoot.quaternion, 'YXZ').y, 0);
       const behind = new THREE.Vector3(0, liftY, distBack).applyEuler(yawOnly);
       const desired = pos.clone().add(behind);
       this.camera.position.lerp(desired, 0.09);
-      this.camera.lookAt(pos.x, pos.y + 0.1, pos.z - 0.1);
+      const ahead = new THREE.Vector3(0, 0.03, -0.35).applyEuler(yawOnly).add(pos);
+      this.camera.lookAt(ahead);
     } else if (this.cameraMode === 'top') {
       const topH = Math.max(4.6, Math.max(this.arenaConfig.widthM, this.arenaConfig.lengthM) * 0.92);
       const desired = new THREE.Vector3(pos.x * 0.35, topH, pos.z * 0.35 + 0.5);

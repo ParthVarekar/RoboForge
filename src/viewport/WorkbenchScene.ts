@@ -48,6 +48,13 @@ export interface WorkbenchCallbacks {
   onAddWireWaypoint: (wireId: string, point: Vec3) => void;
 }
 
+/** A copy of a bench build for the arena (see `WorkbenchScene.snapshotModel`). */
+export interface VehicleSnapshot {
+  group: THREE.Group;
+  /** What it is, by its parts: a ground rover, a quad, or neither. */
+  vehicle: 'rover' | 'drone' | null;
+}
+
 /**
  * Manages the interactive 3D CAD Electronics Workbench scene:
  * bright/dark precision studio mat, high-detail components, routed cables,
@@ -461,6 +468,50 @@ export class WorkbenchScene {
   /**
    * Disposes all listeners, controls, and WebGL resources cleanly.
    */
+  /**
+   * A copy of the build as it stands on the bench, every part and every laid wire, for the arena to drive around
+   * (bench units, cm). Wheels, propellers and LEDs are tagged so the arena can spin and light them; pin targets and
+   * fault rings are left out, and no wire is drawn as selected.
+   */
+  public snapshotModel(): VehicleSnapshot {
+    const selected = this.selectedWireId;
+    if (selected) {
+      this.selectedWireId = null;
+      this.rebuildWires();
+    }
+    for (const handle of this.handles.values()) {
+      const comp = this.project.components.find((c) => c.id === handle.componentId);
+      if (handle.wheelMesh) handle.wheelMesh.userData.arenaRole = comp?.side === 'right' ? 'wheelR' : 'wheelL';
+      if (handle.propMesh) handle.propMesh.userData.arenaRole = 'prop';
+      handle.faultRing.userData.arenaDrop = true;
+    }
+    const leds = new Set<THREE.Material>();
+    for (const handle of this.handles.values()) if (handle.ledMaterial) leds.add(handle.ledMaterial);
+    const group = new THREE.Group();
+    for (const root of [this.componentRoot, this.wireRoot]) for (const child of root.children) group.add(child.clone(true));
+    const drop: THREE.Object3D[] = [];
+    group.traverse((obj) => {
+      if (obj.userData.pickType === 'pin' || obj.userData.arenaDrop) drop.push(obj);
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        // each status LED gets its own material, so the arena can light it from the sketch
+        if (!Array.isArray(mesh.material) && leds.has(mesh.material)) {
+          mesh.material = mesh.material.clone();
+          mesh.userData.arenaRole = 'led';
+        }
+      }
+    });
+    for (const obj of drop) obj.removeFromParent();
+    if (selected) {
+      this.selectedWireId = selected;
+      this.rebuildWires();
+    }
+    const kinds = new Set(this.project.components.map((c) => c.kind));
+    const vehicle = kinds.has('frame_quad_5in') || kinds.has('brushless_2207') ? 'drone' : kinds.has('chassis_2wd') || kinds.has('dc_motor') ? 'rover' : null;
+    return { group, vehicle };
+  }
+
   public dispose(): void {
     this.unbindEvents();
     this.transform.dispose();

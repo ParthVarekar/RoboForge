@@ -47,7 +47,8 @@ studio_trial/
     │   ├── wireRouting.ts               # Rest length per leg for hanging wires, path sampling helpers
     │   ├── wireGeometry.ts              # Tube for a solved wire path, DuPont sockets, solder joints, ESC looms
     │   ├── WorkbenchScene.ts            # Three.js 3D CAD Workbench (PMREM, gizmos, tape measure, tie points)
-    │   ├── arenaMeshes.ts               # Three.js 3D Arena obstacles (trees, gates, walls) & Rover/Drone models
+    │   ├── arenaMeshes.ts               # Three.js 3D Arena obstacles (trees, gates, walls)
+    │   ├── arenaVehicle.ts              # The arena's rover/quad: the bench build itself (parts + wires), at real size
     │   └── ArenaScene.ts                # Three.js 3D Physics Arena + interactive wall/element placement
     └── components/
         ├── Toolbar.tsx                  # Top studio header (Undo/Redo, Presets, Bench/Arena, Run/Stop, Guard)
