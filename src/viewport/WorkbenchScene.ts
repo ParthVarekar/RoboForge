@@ -1087,6 +1087,66 @@ export class WorkbenchScene {
     );
   }
 
+  /** Parts a dropped part may sit on (their top face), rather than the bench mat beside them. */
+  private static readonly DECK_KINDS = new Set(['chassis_2wd', 'frame_quad_5in', 'cad_plate', 'cad_box']);
+
+  /**
+   * Where a part dropped at this screen point lands (cm, part origin): on the chassis, frame or plate under the cursor
+   * when there is one, otherwise on the bench mat; snapped to the grid step and kept on the bench.
+   */
+  public dropPointAt(clientX: number, clientY: number): Vec3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    let surface: THREE.Vector3 | null = null;
+    for (const hit of this.raycaster.intersectObjects(this.componentRoot.children, true)) {
+      let o: THREE.Object3D | null = hit.object;
+      while (o && o.userData.pickType !== 'component') o = o.parent;
+      const comp = o ? this.project.components.find((c) => c.id === o!.userData.componentId) : undefined;
+      if (!comp) continue;
+      if (WorkbenchScene.DECK_KINDS.has(comp.kind) && hit.face && hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y > 0.7) {
+        surface = hit.point.clone();
+      }
+      // the first part under the cursor decides: a deck to sit on, or something to drop beside
+      break;
+    }
+    const floor = new THREE.Vector3();
+    const at = surface ?? (this.raycaster.ray.intersectPlane(this.benchPlane, floor) ? floor : null);
+    if (!at) return null;
+    const step = this.snapMm / 10;
+    const snap = (v: number) => Math.round(v / step) * step;
+    return [
+      Number(Math.max(-16, Math.min(16, snap(at.x))).toFixed(2)),
+      surface ? Number(Math.max(0, Math.min(12, surface.y)).toFixed(2)) : 0,
+      Number(Math.max(-14, Math.min(14, snap(at.z))).toFixed(2)),
+    ];
+  }
+
+  private dropMarker: THREE.Mesh | null = null;
+
+  /** A ring on the bench where a dragged part will land (null hides it). */
+  public showDropMarker(at: Vec3 | null): void {
+    if (!at) {
+      if (this.dropMarker) this.dropMarker.visible = false;
+      return;
+    }
+    if (!this.dropMarker) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.55, 0.75, 40),
+        new THREE.MeshBasicMaterial({ color: 0x0d9488, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.renderOrder = 10;
+      ring.raycast = () => undefined;
+      this.measureRoot.parent?.add(ring);
+      this.dropMarker = ring;
+    }
+    this.dropMarker.visible = true;
+    this.dropMarker.position.set(at[0], at[1] + 0.03, at[2]);
+  }
+
   private updatePointer(ev: PointerEvent): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;

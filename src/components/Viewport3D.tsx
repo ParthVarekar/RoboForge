@@ -20,9 +20,11 @@ import type {
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
 import type { DisplayBench } from '../engine/displays/panels';
 import { paintDisplays } from '../viewport/displayPainter';
+import { PART_DRAG_TYPE } from './PartsPanel';
 import {
   resolveArenaConfig,
   type ArenaObstacleKind,
+  type ComponentKind,
   type StudioProject,
   type Vec3,
   type WirePinRef,
@@ -72,6 +74,8 @@ export interface Viewport3DProps {
   onTransformComponent: (id: string, position: Vec3, rotationY: number) => void;
   onCursorBenchMm: (xMm: number, yMm: number) => void;
   onButtonPress: (componentId: string, pressed: boolean) => void;
+  /** A part dragged from the parts list was dropped on the bench at `at` (cm). */
+  onDropPart: (kind: ComponentKind, at: Vec3) => void;
   onSelectObstacle: (id: string | null) => void;
   onMoveObstacle: (id: string, position: Vec3) => void;
   onPlaceObstacle: (kind: ArenaObstacleKind, x: number, z: number) => void;
@@ -118,6 +122,7 @@ export function Viewport3D({
   onTransformComponent,
   onCursorBenchMm,
   onButtonPress,
+  onDropPart,
   onSelectObstacle,
   onMoveObstacle,
   onPlaceObstacle,
@@ -408,7 +413,27 @@ export function Viewport3D({
 
   return (
     <div className="viewport-wrap">
-      <div ref={hostRef} className="viewport-canvas" />
+      <div
+        ref={hostRef}
+        className="viewport-canvas"
+        onDragOver={(ev) => {
+          const bench = benchSceneRef.current;
+          if (mode !== 'workbench' || !bench || !ev.dataTransfer.types.includes(PART_DRAG_TYPE)) return;
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = 'copy';
+          bench.showDropMarker(bench.dropPointAt(ev.clientX, ev.clientY));
+        }}
+        onDragLeave={() => benchSceneRef.current?.showDropMarker(null)}
+        onDrop={(ev) => {
+          const bench = benchSceneRef.current;
+          const kind = ev.dataTransfer.getData(PART_DRAG_TYPE);
+          bench?.showDropMarker(null);
+          if (mode !== 'workbench' || !bench || !kind) return;
+          ev.preventDefault();
+          const at = bench.dropPointAt(ev.clientX, ev.clientY);
+          if (at) onDropPart(kind as ComponentKind, at);
+        }}
+      />
 
       {/* Top-Left Collapsible Browser Tree + Active Tool Prompts */}
       <div className="hud-top-left">

@@ -19,6 +19,17 @@ function PartThumb({ kind, alt }: { kind: ComponentKind; alt: string }): React.R
   return <img src={src} alt={alt} className="part-thumb" draggable={false} />;
 }
 
+/** Drag-and-drop type carrying a part kind from the list to the 3D bench. */
+export const PART_DRAG_TYPE = 'application/x-roboforge-part';
+
+/** Starts dragging a part card: the part kind travels with the drag, and the thumbnail is the drag image. */
+function startPartDrag(ev: React.DragEvent<HTMLDivElement>, kind: ComponentKind): void {
+  ev.dataTransfer.setData(PART_DRAG_TYPE, kind);
+  ev.dataTransfer.effectAllowed = 'copy';
+  const img = ev.currentTarget.querySelector('img');
+  if (img) ev.dataTransfer.setDragImage(img, img.width / 2, img.height / 2);
+}
+
 export interface PartsPanelProps {
   analysis: CircuitAnalysis;
   onAddPart: (kind: ComponentKind) => void;
@@ -86,7 +97,7 @@ export function PartsPanel({ analysis, onAddPart }: PartsPanelProps): React.Reac
       {tab === 'parts' && (
         <div className="panel-scroll">
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            Click a component to add it onto the 3D bench.
+            Click a component to add it, or drag it onto the 3D bench.
           </div>
 
           <input
@@ -132,6 +143,9 @@ export function PartsPanel({ analysis, onAddPart }: PartsPanelProps): React.Reac
               className="part-card"
               role="button"
               tabIndex={0}
+              draggable
+              onDragStart={(ev) => startPartDrag(ev, part.kind)}
+              title="Click to add, or drag onto the bench"
               onClick={() => onAddPart(part.kind)}
               onKeyDown={(ev) => {
                 if (ev.key === 'Enter' || ev.key === ' ') onAddPart(part.kind);
@@ -194,6 +208,9 @@ export function PartsPanel({ analysis, onAddPart }: PartsPanelProps): React.Reac
               className="part-card"
               role="button"
               tabIndex={0}
+              draggable
+              onDragStart={(ev) => startPartDrag(ev, part.kind)}
+              title="Click to add, or drag onto the bench"
               onClick={() => onAddPart(part.kind)}
               onKeyDown={(ev) => {
                 if (ev.key === 'Enter' || ev.key === ' ') onAddPart(part.kind);

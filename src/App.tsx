@@ -540,7 +540,8 @@ export function App(): React.ReactElement {
     }, 30);
   };
 
-  const handleAddPart = (kind: ComponentKind) => {
+  /** Adds a part: at `at` when it was dragged onto the bench, otherwise at the next free default spot. */
+  const handleAddPart = (kind: ComponentKind, at?: Vec3) => {
     const spec = getPartSpec(kind);
     const count = project.components.filter((c) => c.kind === kind).length + 1;
     const id = `${kind}_${Date.now().toString(36).slice(-4)}`;
@@ -549,7 +550,7 @@ export function App(): React.ReactElement {
       id,
       kind,
       label: `${spec.shortName} ${count}`,
-      position: [
+      position: at ?? [
         offset,
         kind.startsWith('cad_') || kind === 'chassis_2wd' || kind === 'dc_motor' ? 0 : 0.45,
         -2.0 + (count % 3) * 2.5,
@@ -767,7 +768,7 @@ export function App(): React.ReactElement {
       />
 
       <main className={`workspace-body${codeWide && rightTab === 'code' ? ' code-wide' : ''}`}>
-        <PartsPanel analysis={analysis} onAddPart={handleAddPart} />
+        <PartsPanel analysis={analysis} onAddPart={(kind) => handleAddPart(kind)} />
 
         <div className="center-column">
           {mode === 'workbench' ? (
@@ -780,7 +781,7 @@ export function App(): React.ReactElement {
                 setTool(nextTool);
                 setRoutingWireId(null);
               }}
-              onAddShape={handleAddPart}
+              onAddShape={(kind) => handleAddPart(kind)}
               onRotateStep={() => {
                 if (!selectedComponentId) return;
                 const c = project.components.find((x) => x.id === selectedComponentId);
@@ -869,6 +870,7 @@ export function App(): React.ReactElement {
               handleUpdateComponent(id, { position, rotationY })
             }
             onCursorBenchMm={(x, y) => setCursorMm({ x, y })}
+            onDropPart={(kind, at) => handleAddPart(kind, at)}
             onButtonPress={(cid, pressed) => {
               if (pressed) pressedButtonsRef.current.add(cid);
               else pressedButtonsRef.current.delete(cid);

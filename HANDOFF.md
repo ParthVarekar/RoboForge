@@ -747,6 +747,13 @@ What the user asked for: "make the displays configurable by code ... whatever yo
 
 ---
 
+### 11.6b Drag and drop from the parts list (added 2026-11-25)
+Part and shape cards are `draggable` (`PartsPanel.startPartDrag`, type `PART_DRAG_TYPE`, the thumbnail as drag image).
+`Viewport3D`'s canvas host shows a teal ring while a part is dragged over the bench (`WorkbenchScene.showDropMarker`) and
+on drop calls `onDropPart(kind, at)`; `WorkbenchScene.dropPointAt(x, y)` puts the part on the chassis, quad frame, CAD plate
+or box under the cursor (an upward face), otherwise on the mat at height 0, snapped to the grid and kept on the bench.
+`App.handleAddPart(kind, at?)` places it there (clicking a card still adds it at the default spot). Bench mode only.
+
 ### 11.7 One jumper per header pin, solder splices (added 2026-11-24)
 A 2.54 mm header pin takes one DuPont socket, so `engine/pinCapacity.ts` gives header pins a capacity of 1 and soldered
 points (`contact: 'lead'`: resistor / LED / capacitor leads, buck and FC pads, motor tabs, battery leads, splices) no
