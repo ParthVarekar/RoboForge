@@ -754,6 +754,11 @@ on drop calls `onDropPart(kind, at)`; `WorkbenchScene.dropPointAt(x, y)` puts th
 or box under the cursor (an upward face), otherwise on the mat at height 0, snapped to the grid and kept on the bench.
 `App.handleAddPart(kind, at?)` places it there (clicking a card still adds it at the default spot). Bench mode only.
 
+### 11.8 Parts style guide
+`docs/PARTS_STYLE_GUIDE.md` holds the binding rules for building parts: sourcing first, one geometry constant per part,
+the kit APIs, materials, the screen-reflection trap, registration steps, verification with
+`scripts/checks/part_shots.cjs <kind>`, and a definition-of-done checklist. Attach it to any request for a new part.
+
 ### 11.7 One jumper per header pin, solder splices (added 2026-11-24)
 A 2.54 mm header pin takes one DuPont socket, so `engine/pinCapacity.ts` gives header pins a capacity of 1 and soldered
 points (`contact: 'lead'`: resistor / LED / capacitor leads, buck and FC pads, motor tabs, battery leads, splices) no

@@ -5,3 +5,6 @@ dist/
 
 # local recordings (not for the repo)
 recordings/
+
+# part_shots.cjs output
+part_shots/
