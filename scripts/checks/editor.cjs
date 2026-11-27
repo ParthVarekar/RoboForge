@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(process.env.APPDATA, 'npm/node_modules/@playwright/mcp/node_modules/playwright'));
 const OUT = process.argv[2];
-const BASE = process.argv[3] || 'http://127.0.0.1:8070/';
+const BASE = process.argv[3] || 'http://127.0.0.1:8070/#app';
 const results = [];
 const check = (name, ok, detail = '') => {
   results.push({ name, ok, detail });

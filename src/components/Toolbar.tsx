@@ -38,6 +38,7 @@ export interface ToolbarProps {
   onToggleTheme: () => void;
   onOpenExport: () => void;
   onImportJson: (jsonText: string) => void;
+  onOpenHome?: () => void;
 }
 
 /**
@@ -63,6 +64,7 @@ export function Toolbar({
   onToggleTheme,
   onOpenExport,
   onImportJson,
+  onOpenHome,
 }: ToolbarProps): React.ReactElement {
   const handleFileChange = (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
@@ -74,11 +76,25 @@ export function Toolbar({
   return (
     <header className="toolbar">
       <div className="toolbar-group">
-        <div className="brand">
-          <Cpu size={17} color="#0d9488" />
-          <span>RoboForge Studio</span>
-          <span className="brand-badge">Trial</span>
-        </div>
+        {onOpenHome ? (
+          <button
+            type="button"
+            className="brand"
+            title="Return to RoboForge overview"
+            onClick={onOpenHome}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <Cpu size={17} color="#0d9488" />
+            <span>RoboForge Studio</span>
+            <span className="brand-badge">Trial</span>
+          </button>
+        ) : (
+          <div className="brand">
+            <Cpu size={17} color="#0d9488" />
+            <span>RoboForge Studio</span>
+            <span className="brand-badge">Trial</span>
+          </div>
+        )}
 
         <button type="button" className="btn btn-sm" disabled={!canUndo} title="Undo (Ctrl+Z)" onClick={onUndo}>
           <Undo2 size={13} />

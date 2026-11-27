@@ -10,7 +10,7 @@ const OUT = process.argv[2] || './arena';
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto('http://127.0.0.1:8070/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:8070/#app', { waitUntil: 'networkidle' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(2500);

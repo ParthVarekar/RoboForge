@@ -25,7 +25,7 @@ const wait = (page, ms) => page.waitForTimeout(ms);
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e}`));
   page.on('dialog', (d) => d.accept());
-  await page.goto('http://127.0.0.1:8070/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:8070/#app', { waitUntil: 'networkidle' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
   await wait(page, 1500);

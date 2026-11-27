@@ -7,7 +7,7 @@ const OUT = process.argv[2];
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1.5 });
-  await page.goto('http://127.0.0.1:8070/', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:8070/#app', { waitUntil: 'networkidle' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(2500);

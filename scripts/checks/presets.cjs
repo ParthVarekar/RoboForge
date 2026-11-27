@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(process.env.APPDATA, 'npm/node_modules/@playwright/mcp/node_modules/playwright'));
 const OUT = process.argv[2];
-const BASE = process.argv[3] || 'http://127.0.0.1:8070/';
+const BASE = process.argv[3] || 'http://127.0.0.1:8070/#app';
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ headless: true, executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });

@@ -95,29 +95,39 @@ interface ProjectHistoryState {
   future: StudioProject[];
 }
 
+export interface AppProps {
+  initialPresetId?: string;
+  initialMode?: StudioViewMode;
+  onOpenHome?: () => void;
+}
+
 /**
  * Root RoboForge Studio Trial application integrating the precision Light/Dark 3D CAD Workbench,
  * high-detail components, orthogonal harness wire routing & tie-points, offline Monaco IDE,
  * live 4-ch oscilloscope, 2D SLAM occupancy map, and customizable 3D Physics Arena & Environment Builder.
  */
-export function App(): React.ReactElement {
+export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {}): React.ReactElement {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [restored] = useState<SavedSession | null>(() => loadSession());
-  const [presetId, setPresetId] = useState(restored?.presetId ?? 'roboforge_rover');
+  const [restored] = useState<SavedSession | null>(() => (initialPresetId ? null : loadSession()));
+  const [presetId, setPresetId] = useState(initialPresetId ?? restored?.presetId ?? 'roboforge_rover');
   const [history, setHistory] = useState<ProjectHistoryState>(() => ({
     past: [],
-    present: restored?.project ?? createPresetProject('roboforge_rover'),
+    present: initialPresetId
+      ? createPresetProject(initialPresetId)
+      : restored?.project ?? createPresetProject('roboforge_rover'),
     future: [],
   }));
   const project = history.present;
 
-  const [mode, setMode] = useState<StudioViewMode>('workbench');
+  const [mode, setMode] = useState<StudioViewMode>(initialMode ?? 'workbench');
   const [tool, setTool] = useState<WorkbenchTool>('select');
   const [showMat, setShowMat] = useState(true);
   const [showCom, setShowCom] = useState(false);
   const [snapMm] = useState(1);
 
-  const [rightTab, setRightTab] = useState<RightTab>('inspect');
+  const [rightTab, setRightTab] = useState<RightTab>(
+    initialMode === 'arena' ? (initialPresetId === 'room_mapper' ? 'map' : 'arena') : 'inspect',
+  );
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [routingWireId, setRoutingWireId] = useState<string | null>(null);
@@ -819,6 +829,7 @@ export function App(): React.ReactElement {
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
         onOpenExport={() => setExportOpen(true)}
         onImportJson={handleImportJson}
+        onOpenHome={onOpenHome}
       />
 
       <main className={`workspace-body${codeWide && rightTab === 'code' ? ' code-wide' : ''}`}>

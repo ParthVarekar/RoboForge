@@ -3,7 +3,7 @@
 // Usage: node scripts/checks/wire_overlap.cjs [presetId]     e.g.  node scripts/checks/wire_overlap.cjs quad_5in
 const path = require('path');
 const { chromium } = require(path.join(process.env.APPDATA || '', 'npm/node_modules/@playwright/mcp/node_modules/playwright'));
-const BASE = process.env.STUDIO_URL || 'http://127.0.0.1:8070/';
+const BASE = process.env.STUDIO_URL || 'http://127.0.0.1:8070/#app';
 const preset = process.argv[2] || 'roboforge_rover';
 const LABEL = { roboforge_rover: 'RoboForge 2WD Rover (Wired)', room_mapper: 'Autonomous 360° Room Mapper', quad_5in: '5-Inch Freestyle Quadcopter', fault_lab: 'Circuit Fault Diagnostics Lab', blank_bench: 'Blank Workbench' };
 const TOUCH_MM = 0.04; // a pair closer than this (in cm, below) counts as touching; 0.04 cm = 0.4 mm of overlap
