@@ -204,11 +204,14 @@ export function HeroBenchStage({ activePreset, onSelectPreset }: HeroBenchStageP
     <div className="lp-stage-wrap">
       <div className="lp-stage-frame" aria-label="Interactive 3D RoboForge Workbench Preview">
         {webglFailed ? (
-          <img
-            className="lp-stage-fallback"
-            src="/landing/rover-macro.jpg"
-            alt="Assembled ESP32 2WD robotics rover on a silver drafting cutting mat"
-          />
+          <>
+            <img
+              className="lp-stage-fallback"
+              src="/landing/rover-macro.webp"
+              alt="Illustration (generated image) of an ESP32 2WD rover on a cutting mat; the live 3D bench needs WebGL"
+            />
+            <span className="lp-illustration-tag">Illustration, generated image</span>
+          </>
         ) : (
           <div ref={hostRef} className="lp-stage-canvas" />
         )}

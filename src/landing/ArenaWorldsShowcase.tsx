@@ -9,6 +9,8 @@ interface WorldSlide {
   label: string;
   imageSrc: string;
   imageAlt: string;
+  /** A generated illustration rather than a screenshot of the studio: tagged as such on the page. */
+  illustration?: boolean;
   heading: string;
   description: string;
   launchPreset: string;
@@ -20,9 +22,10 @@ const WORLD_SLIDES: WorldSlide[] = [
   {
     id: 'forest',
     label: 'Pine forest',
-    imageSrc: '/landing/forest-drone.jpg',
+    imageSrc: '/landing/forest-drone.webp',
     imageAlt:
-      'Carbon-fiber 5-inch freestyle quadcopter banking through a glowing teal FPV racing gate in a sunlit pine forest',
+      'Illustration (generated image): a carbon-fiber 5-inch quadcopter banking through a teal FPV gate in a sunlit pine forest',
+    illustration: true,
     heading: 'Fly a 5-inch quadcopter through pine trees and open gates',
     description:
       'Switch to the 18 by 18 meter woodland clearing with 23 multi-tier conifer trees, boulders, open-center fly-through FPV archway colliders, altitude controls, and a live first-person camera feed.',
@@ -113,6 +116,7 @@ export function ArenaWorldsShowcase({ onLaunchPreset }: ArenaWorldsShowcaseProps
 
         <div className="lp-media-stage">
           <img src={active.imageSrc} alt={active.imageAlt} />
+          {active.illustration && <span className="lp-illustration-tag">Illustration, generated image</span>}
         </div>
 
         <div className="lp-arena-meta">

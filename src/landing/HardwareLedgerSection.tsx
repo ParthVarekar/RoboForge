@@ -30,9 +30,10 @@ export function HardwareLedgerSection({ onOpenStudio }: HardwareLedgerSectionPro
         <div className="lp-ledger-grid">
           <div className="lp-macro-frame">
             <img
-              src="/landing/rover-macro.jpg"
-              alt="Macro studio view of an ESP32 2WD carbon-fiber rover assembled with flat color-coded wiring harnesses on a silver millimeter cutting mat"
+              src="/landing/rover-macro.webp"
+              alt="Illustration (generated image) of an ESP32 2WD carbon-fiber rover with colour-coded wiring on a millimetre cutting mat; not a photo of the RoboForge rover"
             />
+            <span className="lp-illustration-tag">Illustration, generated image</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
