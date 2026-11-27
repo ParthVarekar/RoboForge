@@ -17,6 +17,7 @@ import { buildWireGroup, DEFAULT_END, wireExit, wireRadius, type WireEnd } from 
 import { NeighborField, ObstacleGrid, solveRope, type RopeObstacle, type V3 } from './wireRope';
 import { densify, makeDeckGrid, routeDeck, separateWires, shapeBridge, shapeDrop, type DeckRoute } from './wireDeckRouter';
 import { arcLengths3, planWire, pointAlong } from './wireRouting';
+import { SelectionGlow } from './selectionGlow';
 
 export type WorkbenchTool = 'select' | 'wire' | 'move' | 'lift' | 'rotate' | 'measure';
 export type BenchCameraView = 'iso' | 'top' | 'front' | 'right' | 'fit';
@@ -117,6 +118,8 @@ export class WorkbenchScene {
   private liveActuators: ActuatorFrame = EMPTY_ACTUATORS;
   /** Sound rings shown over each sounding buzzer, made the first time it sounds. */
   private soundRings = new Map<string, THREE.Mesh[]>();
+  /** The breathing glow on the selected part. */
+  private readonly selectionGlow = new SelectionGlow();
   private built = false;
   private hoverPin: THREE.Mesh | null = null;
   /** Camera glide target for "Fit" and double-click focus: orbit target and camera position to ease towards. */
@@ -558,6 +561,9 @@ export class WorkbenchScene {
         mat.opacity = 0;
       }
     }
+    const selected = this.selectedComponentId ? this.handles.get(this.selectedComponentId) : undefined;
+    this.selectionGlow.attach(selected?.group ?? null);
+    this.selectionGlow.update(this.animTime);
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -622,6 +628,7 @@ export class WorkbenchScene {
 
   public dispose(): void {
     this.unbindEvents();
+    this.selectionGlow.dispose();
     this.transform.dispose();
     this.orbit.dispose();
     this.envRenderTarget?.dispose();

@@ -858,6 +858,13 @@ library" table in `docs/06_COMPONENT_REFERENCES.md` (not re-checked against sour
 - Preset and sketch: `actuator_lab` / `ACTUATOR_LAB_SKETCH` in `catalog/presets.ts`. Tests:
   `engine/__tests__/actuators.test.ts`; browser check: `scripts/checks/actuator_lab.cjs`.
 
+### 11.12 Selection glow (added 2026-11-28)
+The selected part breathes with a teal glow besides the ring under it (`viewport/selectionGlow.ts`, used at the end of
+`WorkbenchScene.render`): each visible mesh of the part gets a see-through twin (same geometry, instanced meshes
+included) with a rim shader, drawn over it with a polygon offset. Strength pulses about every 2 s (steady with
+reduced motion). The twins are `noPick` / `noFrame`, share geometry and are removed when the selection changes; the
+material is marked shared so part rebuilds do not dispose it. Check: `scripts/checks/selection_glow.cjs`.
+
 ## 12. The reality-gap model and the Twin tab
 
 `TwinFaultConfig` (section 6) is edited in the Twin tab, and by the arena's Real Rover Profile and Ideal Sim buttons.
