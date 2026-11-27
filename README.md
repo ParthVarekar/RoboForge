@@ -51,6 +51,19 @@ that is drawn; leads and pads get soldered joints. Dimensions, pin orders and so
 
 <br clear="right" />
 
+### Design with AI
+
+Open the **Design** tab and say what you want to build ("a rover that avoids walls and shows the distance on a
+screen", or "you pick"). The AI asks at most a question or two, then a blueprint appears: a top view, the parts list
+with costs and why each part is there, power and runtime, and the pin map. Press **Build on the bench** to watch it
+assemble part by part and wire by wire. It comes with a starter sketch for the chosen pins, and you can export the
+parts list as Markdown or CSV.
+
+The AI only chooses the platform and the parts. Layout, pins, wiring, resistors, splices and the sketch are worked out
+by rules, so every build follows the circuit checks (one jumper per pin, ECHO dividers, LED resistors). The AI runs
+through the dev server with the key from `config/llm.json` (never sent to the browser). Without a key, a built-in
+planner answers.
+
 ### Displays you program like the real ones
 
 The OLED and the LCDs show what the sketch draws, using the same libraries as on the board, so the code can be

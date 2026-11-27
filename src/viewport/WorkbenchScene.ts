@@ -192,14 +192,40 @@ export class WorkbenchScene {
   /**
    * Synchronizes 3D components, wires, and Center-of-Mass marker to reflect an updated project.
    */
+  /** While a design is being built, parts that appear drop onto the bench instead of popping in. */
+  private arrivalFx = false;
+  private arrivals = new Map<string, { t: number; restY: number }>();
+
+  public setArrivalEffects(on: boolean): void {
+    this.arrivalFx = on;
+    if (!on) {
+      for (const [id, a] of this.arrivals) {
+        const g = this.handles.get(id)?.group;
+        if (g) {
+          g.position.y = a.restY;
+          g.scale.setScalar(1);
+        }
+      }
+      this.arrivals.clear();
+    }
+  }
+
   public syncProject(project: StudioProject, analysis: CircuitAnalysis): void {
     // Only rebuild what changed: typing in the code editor or a new circuit analysis must not tear down and rebuild
     // every 3D part (that made typing lag and leaked GPU memory on each keystroke).
     const componentsChanged = !this.built || project.components !== this.project.components;
     const wiresChanged = componentsChanged || project.wires !== this.project.wires;
+    const before = new Set(this.project.components.map((c) => c.id));
     this.project = project;
     this.analysis = analysis;
     if (componentsChanged) this.rebuildComponents();
+    if (componentsChanged && this.arrivalFx && this.built) {
+      for (const c of project.components) {
+        if (before.has(c.id)) continue;
+        const g = this.handles.get(c.id)?.group;
+        if (g) this.arrivals.set(c.id, { t: 0, restY: g.position.y });
+      }
+    }
     if (wiresChanged) this.rebuildWires();
     this.built = true;
     this.updateComMarker();
@@ -389,6 +415,23 @@ export class WorkbenchScene {
    */
   public render(dt: number): void {
     this.animTime += dt;
+    // arrivals: a short drop with a soft landing and a little settle (0.45 s)
+    for (const [id, a] of this.arrivals) {
+      const g = this.handles.get(id)?.group;
+      if (!g) {
+        this.arrivals.delete(id);
+        continue;
+      }
+      a.t = Math.min(1, a.t + dt / 0.45);
+      const k = 1 - Math.pow(1 - a.t, 3);
+      g.position.y = a.restY + (1 - k) * 4;
+      g.scale.setScalar(0.92 + 0.08 * k);
+      if (a.t >= 1) {
+        g.position.y = a.restY;
+        g.scale.setScalar(1);
+        this.arrivals.delete(id);
+      }
+    }
     if (this.glide) {
       const k = 1 - Math.exp(-dt * 9);
       this.orbit.target.lerp(this.glide.target, k);

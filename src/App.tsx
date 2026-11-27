@@ -7,6 +7,7 @@ import {
   Code2,
   Map as MapIcon,
   SlidersHorizontal,
+  Sparkles,
   Terminal,
   Wrench,
 } from 'lucide-react';
@@ -17,6 +18,8 @@ import { ArenaBuilderStrip } from './components/ArenaBuilderStrip';
 import { ArenaControlsPanel } from './components/ArenaControlsPanel';
 import { CadToolStrip } from './components/CadToolStrip';
 import { CodePanel } from './components/CodePanel';
+import { DesignPanel } from './components/DesignPanel';
+import type { AssembledBuild } from './engine/design/assemble';
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog';
 import { ExportModal } from './components/ExportModal';
 import { InspectorPanel } from './components/InspectorPanel';
@@ -54,7 +57,7 @@ import {
 import type { ArenaEditTool } from './viewport/ArenaScene';
 import type { WorkbenchTool } from './viewport/WorkbenchScene';
 
-type RightTab = 'inspect' | 'code' | 'serial' | 'scope' | 'map' | 'arena';
+type RightTab = 'inspect' | 'design' | 'code' | 'serial' | 'scope' | 'map' | 'arena';
 
 /** The build and sketch are kept in this browser so a reload or a closed tab never loses work. */
 const SESSION_KEY = 'roboforge.studio.session.v1';
@@ -495,6 +498,57 @@ export function App(): React.ReactElement {
 
   const handleSelectPreset = (nextPresetId: string) => confirmReplace('Load a different preset?', () => loadPreset(nextPresetId));
 
+  /* ---------------------------------------------------------------- Design tab: building a design on the bench */
+  const [buildPlayback, setBuildPlayback] = useState<{ build: AssembledBuild; step: number; paused: boolean; before: StudioProject; done: boolean } | null>(null);
+
+  /** The design with its first `step` build steps done: the parts placed so far and the wires laid so far. */
+  const designUpTo = (build: AssembledBuild, step: number): StudioProject => {
+    const done = build.steps.slice(0, step);
+    const parts = new Set(done.filter((s) => s.type === 'part').map((s) => s.id));
+    const laid = new Set(done.filter((s) => s.type === 'wire').map((s) => s.id));
+    return {
+      ...build.project,
+      components: build.project.components.filter((c) => parts.has(c.id)),
+      wires: build.project.wires.filter((w) => laid.has(w.id)),
+    };
+  };
+
+  const handleBuildDesign = (build: AssembledBuild) =>
+    confirmReplace('Build the design on the bench?', () => {
+      handleStop();
+      const before = history.present;
+      setSelectedComponentId(null);
+      setSelectedWireId(null);
+      setRoutingWireId(null);
+      setRuntimeProblem(null);
+      setCompileError(null);
+      setMode('workbench');
+      // the steps play as in-place updates; the finished build becomes one undo step
+      updateProjectInPlace(() => designUpTo(build, 0));
+      setBuildPlayback({ build, step: 0, paused: false, before, done: false });
+    });
+
+  useEffect(() => {
+    if (!buildPlayback || buildPlayback.paused || buildPlayback.done) return;
+    const { build, step, before } = buildPlayback;
+    if (step >= build.steps.length) {
+      setHistory((h) => ({ past: [...h.past.slice(-29), before], present: build.project, future: [] }));
+      setBuildPlayback((p) => (p ? { ...p, done: true } : p));
+      appendSerial({ id: Date.now(), timeMs: 0, text: `Design built: ${build.project.name} (${build.steps.length} steps). Its starter sketch is in the Code tab; Ctrl+Z undoes the whole build.`, level: 'info' });
+      const t = window.setTimeout(() => setBuildPlayback(null), 2500);
+      return () => window.clearTimeout(t);
+    }
+    const next = build.steps[step]!;
+    const t = window.setTimeout(
+      () => {
+        updateProjectInPlace(() => designUpTo(build, step + 1));
+        setBuildPlayback((p) => (p && p.build === build ? { ...p, step: step + 1 } : p));
+      },
+      next.type === 'part' ? 380 : 150,
+    );
+    return () => window.clearTimeout(t);
+  }, [buildPlayback, updateProjectInPlace, appendSerial]);
+
   const loadPreset = (nextPresetId: string) => {
     handleStop();
     setRuntimeProblem(null);
@@ -839,6 +893,7 @@ export function App(): React.ReactElement {
             selectedObstacleId={selectedObstacleId}
             vehicleMode={vehicleMode}
             displays={displayBench}
+            buildFx={buildPlayback !== null && !buildPlayback.done}
             physicsRef={physicsRef}
             liveMotorsRef={liveMotorsRef}
             livePinPwmRef={livePinPwmRef}
@@ -904,6 +959,14 @@ export function App(): React.ReactElement {
             </button>
             <button
               type="button"
+              className={`tab-btn ${rightTab === 'design' ? 'active' : ''}`}
+              onClick={() => setRightTab('design')}
+              title="Describe a build; the AI plans it and it is assembled on the bench"
+            >
+              <Sparkles size={12} /> Design
+            </button>
+            <button
+              type="button"
               className={`tab-btn ${rightTab === 'code' ? 'active' : ''}`}
               onClick={() => setRightTab('code')}
             >
@@ -938,6 +1001,31 @@ export function App(): React.ReactElement {
             >
               <SlidersHorizontal size={12} /> Twin
             </button>
+          </div>
+
+          <div className="design-host" style={{ display: rightTab === 'design' ? 'flex' : 'none' }}>
+            <DesignPanel
+              playback={
+                buildPlayback
+                  ? {
+                      step: buildPlayback.step,
+                      total: buildPlayback.build.steps.length,
+                      label: buildPlayback.build.steps[Math.min(buildPlayback.step, buildPlayback.build.steps.length - 1)]?.label ?? '',
+                      paused: buildPlayback.paused,
+                    }
+                  : null
+              }
+              onBuild={handleBuildDesign}
+              onPause={() => setBuildPlayback((p) => (p ? { ...p, paused: true } : p))}
+              onResume={() => setBuildPlayback((p) => (p ? { ...p, paused: false } : p))}
+              onSkip={() =>
+                setBuildPlayback((p) => {
+                  if (!p) return p;
+                  updateProjectInPlace(() => p.build.project);
+                  return { ...p, step: p.build.steps.length, paused: false };
+                })
+              }
+            />
           </div>
 
           {rightTab === 'inspect' && (

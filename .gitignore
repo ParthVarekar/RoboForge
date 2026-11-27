@@ -8,3 +8,6 @@ recordings/
 
 # part_shots.cjs output
 part_shots/
+
+# OpenRouter key for the Design tab AI (never commit)
+config/llm.json

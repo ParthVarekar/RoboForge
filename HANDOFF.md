@@ -754,6 +754,53 @@ on drop calls `onDropPart(kind, at)`; `WorkbenchScene.dropPointAt(x, y)` puts th
 or box under the cursor (an upward face), otherwise on the mat at height 0, snapped to the grid and kept on the bench.
 `App.handleAddPart(kind, at?)` places it there (clicking a card still adds it at the default spot). Bench mode only.
 
+### 11.9 Design tab: AI plans a build, the assembler builds it (added 2026-11-27)
+The user chats briefly in the **Design** tab (right panel); the result is a blueprint and parts list, and **Build on the
+bench** assembles it step by step on the bench. The AI decides *what* (platform and add-on parts); deterministic code
+decides *where* and *how*.
+- `engine/design/plan.ts`: the contract. `BuildPlanSchema` (title, summary, `platform` rover | drone | bench, `parts`
+  [{kind, qty, role, placement front|back|any, locked}]), `ADDON_KINDS` per platform, `PLATFORM_INFO`,
+  `catalogForPrompt()`, `parsePlan()` (Zod; refuses unknown kinds, drops kinds that are not add-ons for the platform).
+- `engine/design/offline.ts`: `offlineTurn(text, plan, history)`, the keyword planner used with no key, when the AI
+  fails, and in tests. It makes a plan, asks what kind of build when unclear, applies edits ("add a button", "use an
+  LCD instead", "remove the camera"), and says plainly what the library lacks (temperature, GPS, servo...).
+- `engine/design/assemble.ts`: `assemble(plan)` -> `{ project, steps, bom, pins, notes, dropped }`.
+  - Rover: the core in the real rover's layout (chassis, motors at x = +-8.14, ESP32, driver, 2S pack, buck, bulk
+    capacitor fed through its leads).
+  - Bench: ESP32, pack and buck as in the Display Lab.
+  - Drone: the quad preset (the plan only chooses the VTX).
+  - Add-ons: a footprint packer (body + pins + room for sockets on sideways pins; soldered leads less), preferred
+    spots per kind, `maxShift` 4.5 cm on the rover. Front sensors and the camera may overhang the deck's front edge.
+    Standoffs, motor brackets and the battery-lead lane are kept clear.
+  - Satellites: the ECHO divider and LED resistors are placed *with* their module or the module tries its next spot.
+  - GPIOs from preference lists: TRIG 13,16,17,18,19; ECHO 35,34,36,39 (input-only); LEDs 4,23,19...; buttons
+    18,19,23... (to 3V3). I2C is 32/33 on the rover and 21/22 on the bench.
+  - Shared nets fan out through `wire_splice` parts. The source keeps one jumper (header) or up to 4 (pads), and far
+    groups of consumers get local splices chained from the first one.
+  - Anything that does not fit is listed in `dropped` with the reason (for example a 16x2 LCD on the rover deck).
+- `engine/design/sketch.ts`: `starterSketch(spec)`, a real-board starter sketch with the assigned pins (rover: cruise and
+  turn away below 30 cm, heading turn with the IMU; bench: show readings; drone: the quad test sketch).
+- `engine/design/designChat.ts`: `designTurn()` (AI via `/api/design/chat`, else offline), `systemPrompt(plan)`,
+  `readAiAnswer()` (first JSON object, then `parsePlan`), `aiStatus()`.
+- `server/designAi.ts`: the Vite dev-server plugin.
+  - `GET /api/design/status`; `POST /api/design/chat` with `{system, messages}`.
+  - It reads `config/llm.json` (`api_key`, `model`) from the studio folder or its parent, or `OPENROUTER_API_KEY`,
+    and only calls the configured model (default `nvidia/nemotron-3.5-super-vl:free`).
+  - The key stays server-side, and errors are scrubbed of it.
+  - A production build has no endpoint, so the offline planner answers.
+- `components/DesignPanel.tsx`: the chat, blueprint (`footprint()` top view), parts list (remove an asked-for part),
+  totals and runtime, pins, notes, Markdown/CSV export, and the build progress with Pause / Skip.
+- `App.tsx`: `buildPlayback`. The steps are applied with `updateProjectInPlace` (380 ms per part, 150 ms per wire),
+  and the finished build is pushed as one undo step. `Viewport3D` `buildFx` turns on
+  `WorkbenchScene.setArrivalEffects` (parts drop in) and frames the build at the end.
+- Checks:
+  - `engine/__tests__/design.test.ts` (15 tests: no critical faults or errors, one jumper per pin, real pins only,
+    LEDs with resistors, dividers, powered I2C devices, a sketch that compiles cleanly, parts-list counts);
+  - `scripts/checks/design_flow.cjs` (the whole flow in Chrome, including Run);
+  - `scripts/checks/project_wires.cjs` (touching or straight wires for saved projects).
+- Seen working on 2026-11-27: offline and real-AI (Nemotron) designs built and ran (rover avoiding walls; desk
+  gadget with LCD, sensor, buttons and LED). Not checked: how the free model copes with long or unusual chats.
+
 ### 11.8 Parts style guide
 `docs/PARTS_STYLE_GUIDE.md` holds the binding rules for building parts: sourcing first, one geometry constant per part,
 the kit APIs, materials, the screen-reflection trap, registration steps, verification with

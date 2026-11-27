@@ -58,6 +58,8 @@ export interface Viewport3DProps {
   vehicleMode: ArenaVehicleMode;
   /** The display modules (OLED, LCD) whose screens the 3D view paints. */
   displays: DisplayBench;
+  /** A design is being built step by step: new parts drop in, and the camera frames the build when it is done. */
+  buildFx?: boolean;
   physicsRef: React.MutableRefObject<ArenaPhysicsEngine>;
   liveMotorsRef: React.MutableRefObject<MotorDriveOutput[]>;
   livePinPwmRef: React.MutableRefObject<ReadonlyMap<number, number>>;
@@ -106,6 +108,7 @@ export function Viewport3D({
   selectedObstacleId,
   vehicleMode,
   displays,
+  buildFx = false,
   physicsRef,
   liveMotorsRef,
   livePinPwmRef,
@@ -261,6 +264,16 @@ export function Viewport3D({
   useEffect(() => {
     benchSceneRef.current?.setTheme(theme);
   }, [theme]);
+
+  const buildFxWas = useRef(false);
+  useEffect(() => {
+    const bench = benchSceneRef.current;
+    if (!bench) return;
+    bench.setArrivalEffects(buildFx);
+    if (buildFx && !buildFxWas.current) bench.setCameraView('iso');
+    if (!buildFx && buildFxWas.current) bench.setCameraView('fit');
+    buildFxWas.current = buildFx;
+  }, [buildFx]);
 
   useEffect(() => {
     benchSceneRef.current?.setTool(tool);
