@@ -160,7 +160,7 @@ export function relaySrd(g: THREE.Group, p: Place): void {
 }
 
 /** 12 x 9.5 mm magnetic buzzer: black can with the sound hole on top and the "+" mark. */
-export function buzzer12(g: THREE.Group, p: Place & { sealed?: boolean }): void {
+export function buzzer12(g: THREE.Group, p: Place & { sealed?: boolean }): THREE.Group {
   const sub = placed(g, p);
   const can = new THREE.CylinderGeometry(6 * MM, 6 * MM, 9.5 * MM, 40);
   sub.add(mesh(can, plastic(0x141416, 0.45, 0.2), 0, 4.75 * MM, 0));
@@ -182,6 +182,7 @@ export function buzzer12(g: THREE.Group, p: Place & { sealed?: boolean }): void 
     s.position.x = 1.2 * MM;
     sub.add(s);
   }
+  return sub;
 }
 
 /** Small square single-turn trimmer (3362-style, 6.6 x 6.6 x 4.6 mm): blue body, white cross rotor. */

@@ -820,7 +820,8 @@ itself). The Display Lab splits GPIO21/22 at two splices; the fault lab feeds th
 soldered end.
 
 ### 11.10 Extended parts library (added 2026-11-27)
-35 parts added, all **wiring only** (pins, roles and voltage ratings for the circuit check; no simulated behaviour).
+35 parts added; the servos, buzzer, relay and DHT22 are simulated (11.11), the rest **wiring only** (pins, roles and
+voltage ratings for the circuit check; no simulated behaviour).
 The equipment list and what is planned: `docs/07_PARTS_LIBRARY.md`; sizes and what is simplified: the "Extended
 library" table in `docs/06_COMPONENT_REFERENCES.md` (not re-checked against sources).
 - `catalog/moduleGeometry.ts`: one place for sizes and pin tips. `ModuleGeom` (board + header rows + pads + holes),
@@ -838,6 +839,24 @@ library" table in `docs/06_COMPONENT_REFERENCES.md` (not re-checked against sour
   Parts list to add by hand (`offline.ts` MISSING, `designChat.ts` prompt).
 - Checks: `engine/__tests__/partsLibrary.test.ts`; `scripts/checks/part_sheet.cjs <kind...>` takes Iso / Top / close
   shots of several parts into `part_shots/sheet/`.
+
+### 11.11 Servo, buzzer, relay and DHT22 in the simulator (added 2026-11-28)
+- Circuit (`engine/circuit.ts`, `resolveSensorsAndCheck`): `sensors.servos / buzzers / relays / dhts` with the GPIO and whether
+  each is powered enough to work; `ledPins[].relay` for an LED fed from a powered relay COM through NO/NC (directly or
+  through a resistor). Diagnostics: `servo-low-supply-*`, `relay-low-supply-*` (warnings), `dht-no-pullup-*` (info),
+  `<kind>-input-only-*` (error).
+- Sketch (`engine/actuatorLibs.ts`, wired in `runtime.ts`): `Servo` (544-2400 us, values of 500+ in `write` are
+  microseconds), `DHT` (NaN plus a one-time hint when no sensor answers or the type differs; 2 s caching), `tone` /
+  `noTone`, `DHT11/12/21/22`, `AM2301`. `halApi.ts` lists them (checker, completion, hover); `#include <ESP32Servo.h>`,
+  `<Servo.h>`, `<DHT.h>`, `<DHT_U.h>`, `<Adafruit_Sensor.h>` are known; `ESP32PWM::allocateTimer(n);` is blanked.
+  Runtime getters: `getServoPulses()`, `getActiveTones()`; the bench's air comes from the `readDht` hook.
+- Bench (`engine/actuators.ts` `resolveActuators` -> `ActuatorFrame`, each frame in `App.handleSyncLiveFrame`):
+  `WorkbenchScene.animateActuators` turns `servoHorn` (built as its own group in `actuatorsExtra.ts`, `userData.degPerSec`),
+  shakes `soundBody` and shows rings, lights the relay `statusLed`; relay-fed LEDs use `relayLedLit`.
+  `viewport/actuatorSound.ts` plays the buzzer tone and relay clicks (Web Audio; the Sound button on the bench).
+  The DHT22 AIR card sets `benchAir` (temperature, humidity).
+- Preset and sketch: `actuator_lab` / `ACTUATOR_LAB_SKETCH` in `catalog/presets.ts`. Tests:
+  `engine/__tests__/actuators.test.ts`; browser check: `scripts/checks/actuator_lab.cjs`.
 
 ## 12. The reality-gap model and the Twin tab
 

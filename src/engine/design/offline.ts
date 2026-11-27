@@ -119,7 +119,7 @@ function titleFor(platform: Platform, parts: PlanPart[]): string {
 
 /**
  * Things people ask for that this tab cannot place (said plainly instead of silently ignored). The flag says whether
- * the part is in the Parts list already (wiring only, the user adds it by hand) or not in the library at all.
+ * the part is in the Parts list already (the user adds it by hand) or not in the library at all.
  */
 const MISSING: Array<[RegExp, string, boolean]> = [
   [/\b(temperature|thermo\w*|humidity|weather|dht\d*|bme\d*|bmp\d*)\b/, 'temperature or humidity sensor (DHT22, BME280)', true],
@@ -206,7 +206,7 @@ export function offlineTurn(text: string, current: BuildPlan | null, history: re
   const skipped = notHere.length ? ` The ${notHere.map((p) => partLabel(p.kind)).join(' and ')} is not available on the ${PLATFORM_INFO[chosen].name}, so I left it out.` : '';
   const { inList, absent } = missingIn(all);
   const byHand = inList.length
-    ? ` This tab cannot place the ${inList.join(' or the ')} yet; ${inList.length > 1 ? 'they are' : 'it is'} in the Parts list (wiring only, not simulated), so add ${inList.length > 1 ? 'them' : 'it'} by hand after building.`
+    ? ` This tab cannot place the ${inList.join(' or the ')} yet; ${inList.length > 1 ? 'they are' : 'it is'} in the Parts list, so add ${inList.length > 1 ? 'them' : 'it'} by hand after building.`
     : '';
   const lacking = byHand + (absent.length ? ` The parts library has no ${absent.join(', no ')} yet, so that part of the idea is not in this build.` : '');
   return {

@@ -14,7 +14,8 @@ state in the RoboForge parts library. Dimensions, pin orders and what is simplif
 - **Planned**: not in the library yet. The note says what it needs first.
 
 The library had 26 parts before this round (counting the four CAD shapes and the solder splice); 35 were added on
-2026-11-27, so it now has 61.
+2026-11-27, so it now has 61. On 2026-11-28 the servos, the buzzer, the relay and the DHT22 became simulated (see
+"Simulated actuators and the DHT22" below).
 
 ## Controllers
 
@@ -52,11 +53,11 @@ The library had 26 parts before this round (counting the four CAD shapes and the
 | --- | --- | --- |
 | TT gearmotor + 65 mm wheel | Simulated | |
 | 2207 brushless + 5" prop | Simulated | |
-| SG90 micro servo | Wiring only, added | Lead ends in a 3-pin header adapter |
-| MG996R metal-gear servo | Wiring only, added | |
+| SG90 micro servo | Simulated, added | `Servo` (ESP32Servo): the horn turns at the datasheet speed |
+| MG996R metal-gear servo | Simulated, added | Same; slower (0.17 s per 60 degrees) |
 | N20 micro gearmotor | Wiring only, added | |
-| 1-channel 5 V relay module | Wiring only, added | NO / COM / NC screw terminal |
-| Active buzzer module (KY-012) | Wiring only, added | |
+| 1-channel 5 V relay module | Simulated, added | IN HIGH turns it on; an LED fed through NO or NC follows it; click sound |
+| Active buzzer module (KY-012) | Simulated, added | Sounds while SIG is HIGH or carries `tone()` |
 | NEMA 17 stepper | Planned | |
 | JGA25-370 / N20 with encoder | Planned | Encoders need pulse simulation |
 | FS90R continuous-rotation servo | Planned | |
@@ -69,7 +70,7 @@ The library had 26 parts before this round (counting the four CAD shapes and the
 | --- | --- | --- |
 | MPU6050 (GY-521) | Simulated | |
 | HC-SR04 ultrasonic | Simulated | |
-| DHT22 / AM2302 | Wiring only, added | Needs a 10 k pull-up on DATA |
+| DHT22 / AM2302 | Simulated, added | `DHT` library; you set the air with the DHT22 card on the bench |
 | BME280 (GY-BME280, 3.3 V) | Wiring only, added | VIN rated to 3.6 V: the check flags 5 V on it |
 | VL53L0X time of flight | Wiring only, added | |
 | HC-SR501 PIR | Wiring only, added | |
@@ -171,6 +172,20 @@ The library had 26 parts before this round (counting the four CAD shapes and the
 - Each added part is modelled at its real size from datasheet numbers and common module layouts, with its real pins,
   so wires land on the drawn pin, and with voltage ratings the circuit check uses. Sizes were not re-checked against a
   photo or drawing in this round: see the "Extended library" table in 06.
-- Added parts are **wiring only**. A sketch cannot read the DHT22 or move the servo yet. The Design tab does not place
-  them either; it says so and the user adds them from the Parts list.
+- The other added parts are **wiring only**: a sketch cannot drive them yet. The Design tab does not place any of the
+  added parts; it says so and the user adds them from the Parts list.
+
+## Simulated actuators and the DHT22
+
+| Part | In the sketch | What the bench does | What the circuit check looks at |
+| --- | --- | --- | --- |
+| SG90, MG996R servo | `#include <ESP32Servo.h>`, `Servo s; s.attach(pin); s.write(angle);` (also `writeMicroseconds`, `read`, `detach`; `ESP32PWM::allocateTimer` is accepted) | The horn turns to the angle at 600 (SG90) or 350 (MG996R) degrees per second; it stays where it is when the pulses stop | SIG on an output GPIO; VCC 4-7.2 V to move (a warning below 4 V) |
+| Active buzzer (KY-012) | `digitalWrite(pin, HIGH)`, or `tone(pin, hz[, ms])` / `noTone(pin)` | Rings over the buzzer and a quiet tone (the Sound button turns it off) | SIG on an output GPIO; VCC 3-5.5 V |
+| 1-channel relay | `digitalWrite(pin, HIGH)` turns it on | Its green LED lights; an LED wired from a powered COM through NO (or NC) and a resistor lights while the relay is on (off); a click | IN on an output GPIO; DC+ 4.5 V or more (a warning on 3.3 V) |
+| DHT22 | `#include <DHT.h>`, `DHT dht(pin, DHT22); dht.begin(); dht.readTemperature(); dht.readHumidity();` | Reads the temperature and humidity set on the DHT22 card (0.1 steps, a little noise, at most a new value every 2 s); NaN when it is not wired or the type is wrong, with a hint in the Serial tab | DATA on a GPIO; VCC 3-6 V; a note when DATA has no pull-up to VCC |
+
+Not modelled: servo load, stall current and jitter; the active buzzer's own pitch mixing with a `tone()` (the
+simulator plays the tone's pitch); relay contact bounce and other loads than an LED (a motor on the contacts does
+not turn); the DHT22's slow response to change and its reading errors. Nothing here was tried on real hardware.
+The **Actuator Lab** preset and its sketch show all four parts together.
 - Nothing here was tried on real hardware.

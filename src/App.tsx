@@ -34,6 +34,7 @@ import {
   type ArenaVehicleMode,
   type DroneFlightInput,
 } from './engine/arenaPhysics';
+import { EMPTY_ACTUATORS, resolveActuators, type ActuatorFrame } from './engine/actuators';
 import { analyzeCircuit, resolveMotorDrives, type MotorDriveOutput } from './engine/circuit';
 import { DisplayBench } from './engine/displays/panels';
 import { pinRefusal } from './engine/pinCapacity';
@@ -56,6 +57,7 @@ import {
 } from './schema/projectSchema';
 import type { ArenaEditTool } from './viewport/ArenaScene';
 import type { WorkbenchTool } from './viewport/WorkbenchScene';
+import { ActuatorSound } from './viewport/actuatorSound';
 
 type RightTab = 'inspect' | 'design' | 'code' | 'serial' | 'scope' | 'map' | 'arena';
 
@@ -140,6 +142,9 @@ export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {})
   const [compileError, setCompileError] = useState<string | null>(null);
   const [serialLog, setSerialLog] = useState<SerialEntry[]>([]);
   const [benchDistanceCm, setBenchDistanceCm] = useState(85);
+  /** The air a DHT22 on the bench measures (set with its card on the bench). */
+  const [benchAir, setBenchAir] = useState({ tempC: 24, humidity: 45 });
+  const [soundOn, setSoundOn] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
   const [runtimeProblem, setRuntimeProblem] = useState<SketchProblem | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(restored?.savedAt ?? null);
@@ -189,6 +194,14 @@ export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {})
   );
   const liveMotorsRef = useRef<MotorDriveOutput[]>([]);
   const livePinPwmRef = useRef<ReadonlyMap<number, number>>(new Map());
+  const liveActuatorsRef = useRef<ActuatorFrame>(EMPTY_ACTUATORS);
+  const benchAirRef = useRef(benchAir);
+  benchAirRef.current = benchAir;
+  const soundOnRef = useRef(soundOn);
+  soundOnRef.current = soundOn;
+  const actuatorSoundRef = useRef<ActuatorSound | null>(null);
+  if (!actuatorSoundRef.current) actuatorSoundRef.current = new ActuatorSound();
+  useEffect(() => () => actuatorSoundRef.current?.dispose(), []);
   const manualDriveRef = useRef<{ left: number; right: number }>({ left: 0, right: 0 });
   const droneInputRef = useRef<DroneFlightInput>({ forward: 0, strafe: 0, climb: 0, yaw: 0, throttle: 0 });
   const keysDownRef = useRef<Set<string>>(new Set());
@@ -267,6 +280,10 @@ export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {})
           (b) => b.gpio === pin && pressedButtonsRef.current.has(b.componentId),
         ),
       displays: () => displayBenchRef.current,
+      readDht: (pin) => {
+        const dht = analysisRef.current.sensors.dhts.find((d) => d.gpio === pin && d.powered);
+        return dht ? { tempC: benchAirRef.current.tempC, humidity: benchAirRef.current.humidity, type: 22 } : null;
+      },
       onSerial: appendSerial,
       onRuntimeError: (msg, line) => {
         setCompileError(line ? `Line ${line}: ${msg}` : msg);
@@ -452,6 +469,8 @@ export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {})
       const pwmMap = rt.getPinPwmMap();
       livePinPwmRef.current = pwmMap;
       liveMotorsRef.current = resolveMotorDrives(analysisRef.current, pwmMap);
+      liveActuatorsRef.current = resolveActuators(analysisRef.current.sensors, pwmMap, rt.getServoPulses(), rt.getActiveTones());
+      actuatorSoundRef.current?.update(liveActuatorsRef.current, soundOnRef.current);
     }
   }, []);
 
@@ -908,6 +927,11 @@ export function App({ initialPresetId, initialMode, onOpenHome }: AppProps = {})
             physicsRef={physicsRef}
             liveMotorsRef={liveMotorsRef}
             livePinPwmRef={livePinPwmRef}
+            liveActuatorsRef={liveActuatorsRef}
+            benchAir={benchAir}
+            onBenchAirChange={setBenchAir}
+            soundOn={soundOn}
+            onToggleSound={() => setSoundOn((on) => !on)}
             manualDriveRef={manualDriveRef}
             droneInputRef={droneInputRef}
             benchDistanceCm={benchDistanceCm}

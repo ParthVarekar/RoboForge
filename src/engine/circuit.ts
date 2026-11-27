@@ -2,7 +2,7 @@ import { getPartSpec, getPinSpec, type PinSpec } from '../catalog/partsCatalog';
 import { DEFAULT_I2C_ADDRESS, type I2cDeviceWiring } from './displays/panels';
 import { overloadedPins } from './pinCapacity';
 import { SOCKET_RISE_CM, wireLengthCm } from './wireLength';
-import type { ComponentInstance, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
+import type { ComponentInstance, ComponentKind, StudioProject, Vec3, WireConnection, WirePinRef } from '../schema/projectSchema';
 
 export type DiagnosticSeverity = 'critical' | 'error' | 'warning' | 'info';
 
@@ -49,8 +49,20 @@ export interface SensorWiringStatus {
   /** Devices on I2C (OLED, LCDs, MPU6050) with their power, address and the ESP32 pins their SDA/SCL reach. */
   i2cDevices: I2cDeviceWiring[];
   camPowered: boolean;
-  ledPins: Array<{ componentId: string; gpio: number | null; hasSeriesResistor: boolean }>;
+  /**
+   * LEDs: lit from a GPIO (`gpio`), or switched by a relay contact (`relay`: lit while the relay is on for NO, off
+   * for NC) when the relay's COM is on a powered rail.
+   */
+  ledPins: Array<{ componentId: string; gpio: number | null; hasSeriesResistor: boolean; relay?: { componentId: string; closedWhenOn: boolean } }>;
   buttonPins: Array<{ componentId: string; gpio: number | null }>;
+  /** Hobby servos: SIG on `gpio`; `powered` means enough voltage to move (4 V or more, within the rating). */
+  servos: Array<{ componentId: string; kind: ComponentKind; gpio: number | null; powered: boolean }>;
+  /** Active buzzers: sound while SIG is HIGH (or carries a tone()). */
+  buzzers: Array<{ componentId: string; gpio: number | null; powered: boolean }>;
+  /** 5 V relay modules: on while IN is HIGH; `powered` means the coil gets enough voltage to pull in. */
+  relays: Array<{ componentId: string; gpio: number | null; powered: boolean }>;
+  /** DHT22 sensors: DATA on `gpio`; `pullUp` when a resistor ties DATA to a powered rail. */
+  dhts: Array<{ componentId: string; gpio: number | null; powered: boolean; pullUp: boolean }>;
 }
 
 export interface MotorChannelMapping {
@@ -736,6 +748,7 @@ function resolveSensorsAndCheck(
   }
 
   // LEDs
+  const kindOf = new Map(project.components.map((c) => [c.id, c.kind]));
   const ledPins: SensorWiringStatus['ledPins'] = [];
   for (const led of project.components.filter((c) => c.kind === 'led_5mm')) {
     const anodeNet = pinToNet.get(pinKey({ componentId: led.id, pinId: 'ANODE' }));
@@ -770,7 +783,119 @@ function resolveSensorsAndCheck(
         componentIds: [led.id],
       });
     }
-    ledPins.push({ componentId: led.id, gpio: cathodeGrounded ? gpio : null, hasSeriesResistor });
+    // no GPIO: an LED fed from a relay contact whose COM sits on a powered rail is switched by that relay
+    let relay: { componentId: string; closedWhenOn: boolean } | undefined;
+    if (gpio === null && anodeNet && cathodeGrounded) {
+      const feeds = [anodeNet, ...getResistorNeighborNets(project, pinToNet, anodeNet.id).map((h) => h.otherNet)];
+      for (const net of feeds) {
+        const contact = net.pins.find((p) => kindOf.get(p.componentId) === 'relay_1ch' && (p.pinId === 'NO' || p.pinId === 'NC'));
+        if (!contact) continue;
+        const com = pinToNet.get(pinKey({ componentId: contact.componentId, pinId: 'COM' }));
+        if (com && !com.isGround && (com.voltage ?? 0) >= 1.8) {
+          relay = { componentId: contact.componentId, closedWhenOn: contact.pinId === 'NO' };
+          if (net !== anodeNet) hasSeriesResistor = true;
+          if (!hasSeriesResistor) {
+            diagnostics.push({
+              id: `led-no-res-${led.id}`,
+              severity: 'warning',
+              title: `LED (${led.label}) switched by a relay without a current-limiting resistor`,
+              detail: `The relay connects ${led.label} straight to the ${(com.voltage ?? 0).toFixed(1)} V rail.`,
+              fix: 'Insert a resistor in series with the LED anode or cathode.',
+              componentIds: [led.id],
+            });
+          }
+          break;
+        }
+      }
+    }
+    ledPins.push({ componentId: led.id, gpio: cathodeGrounded ? gpio : null, hasSeriesResistor, ...(relay ? { relay } : {}) });
+  }
+
+  /** The GPIO a signal pin reaches directly, with an error when it is an input-only pin and the part needs a driven output. */
+  const outputGpio = (comp: ComponentInstance, pinId: string, partName: string): number | null => {
+    const net = pinToNet.get(pinKey({ componentId: comp.id, pinId }));
+    if (!net) return null;
+    const inputOnly = net.pins.find((p) => p.spec.role === 'gpio_input_only');
+    if (inputOnly) {
+      diagnostics.push({
+        id: `${comp.kind}-input-only-${comp.id}`,
+        severity: 'error',
+        title: `${partName} ${pinId} wired to input-only pin ${inputOnly.spec.label}`,
+        detail: `${partName} ${pinId} needs a signal the ESP32 drives, and GPIO34-39 can only read.`,
+        fix: `Move the ${pinId} wire to an output-capable GPIO such as GPIO18 or GPIO19.`,
+        componentIds: [comp.id, inputOnly.componentId],
+      });
+      return null;
+    }
+    return net.gpioNumbers[0] ?? null;
+  };
+  const supplyV = (comp: ComponentInstance, pinId: string): number | null => {
+    const net = pinToNet.get(pinKey({ componentId: comp.id, pinId }));
+    return net && !net.isGround ? net.voltage : null;
+  };
+
+  // servos: they need about 4.8-6 V to move; 3.3 V makes them twitch or not move at all
+  const servos: SensorWiringStatus['servos'] = [];
+  for (const sv of project.components.filter((c) => c.kind === 'servo_sg90' || c.kind === 'servo_mg996r')) {
+    const name = sv.kind === 'servo_mg996r' ? 'MG996R servo' : 'SG90 servo';
+    const gpio = outputGpio(sv, 'SIG', name);
+    const inRange = isPoweredByNet(sv, 'VCC', 'GND', pinToNet, 3.0, 7.5);
+    const v = supplyV(sv, 'VCC');
+    if (inRange && v !== null && v < 4.0) {
+      diagnostics.push({
+        id: `servo-low-supply-${sv.id}`,
+        severity: 'warning',
+        title: `${name} (${sv.label}) gets only ${v.toFixed(1)} V`,
+        detail: 'Hobby servos are made for 4.8-6 V. From 3.3 V they twitch or do not move, and their current pulls the ESP32 rail down.',
+        fix: 'Power the servo red wire from the 5 V rail (the buck output or a separate 5 V supply) and keep GND common.',
+        componentIds: [sv.id],
+      });
+    }
+    servos.push({ componentId: sv.id, kind: sv.kind, gpio, powered: inRange && v !== null && v >= 4.0 });
+  }
+
+  const buzzers: SensorWiringStatus['buzzers'] = [];
+  for (const bz of project.components.filter((c) => c.kind === 'buzzer_active')) {
+    buzzers.push({ componentId: bz.id, gpio: outputGpio(bz, 'SIG', 'Buzzer'), powered: isPoweredByNet(bz, 'VCC', 'GND', pinToNet, 3.0, 5.5) });
+  }
+
+  // relays: the SRD-05VDC coil pulls in at about 3.75 V, so the module needs its 5 V
+  const relays: SensorWiringStatus['relays'] = [];
+  for (const rl of project.components.filter((c) => c.kind === 'relay_1ch')) {
+    const gpio = outputGpio(rl, 'IN', 'Relay');
+    const inRange = isPoweredByNet(rl, 'VCC', 'GND', pinToNet, 3.0, 5.5);
+    const v = supplyV(rl, 'VCC');
+    if (inRange && v !== null && v < 4.5) {
+      diagnostics.push({
+        id: `relay-low-supply-${rl.id}`,
+        severity: 'warning',
+        title: `Relay (${rl.label}) coil gets only ${v.toFixed(1)} V`,
+        detail: 'The SRD-05VDC relay needs about 3.75 V to pull in and is made for 5 V; from 3.3 V it does not switch.',
+        fix: 'Power the relay module DC+ from the 5 V rail and keep GND common; IN can stay on a 3.3 V GPIO.',
+        componentIds: [rl.id],
+      });
+    }
+    relays.push({ componentId: rl.id, gpio, powered: inRange && v !== null && v >= 4.5 });
+  }
+
+  // DHT22: one data line with a pull-up to VCC (the library also turns on the ESP32's weak internal pull-up)
+  const dhts: SensorWiringStatus['dhts'] = [];
+  for (const dh of project.components.filter((c) => c.kind === 'dht22')) {
+    const dataNet = pinToNet.get(pinKey({ componentId: dh.id, pinId: 'DATA' }));
+    const gpio = dataNet?.gpioNumbers[0] ?? null;
+    const powered = isPoweredByNet(dh, 'VCC', 'GND', pinToNet, 3.0, 6.0);
+    const pullUp = dataNet ? getResistorNeighborNets(project, pinToNet, dataNet.id).some((h) => !h.otherNet.isGround && (h.otherNet.voltage ?? 0) >= 3.0) : false;
+    if (powered && gpio !== null && !pullUp) {
+      diagnostics.push({
+        id: `dht-no-pullup-${dh.id}`,
+        severity: 'info',
+        title: `DHT22 (${dh.label}) DATA has no pull-up resistor`,
+        detail: "The DHT library turns on the ESP32's internal pull-up, which is weak (about 45 kOhm): it works with short wires but readings can fail with long ones.",
+        fix: 'Add a 10 kOhm resistor from DATA to VCC, as the DHT22 datasheet shows.',
+        componentIds: [dh.id],
+      });
+    }
+    dhts.push({ componentId: dh.id, gpio, powered, pullUp });
   }
 
   return {
@@ -790,6 +915,10 @@ function resolveSensorsAndCheck(
     camPowered,
     ledPins,
     buttonPins,
+    servos,
+    buzzers,
+    relays,
+    dhts,
   };
 }
 

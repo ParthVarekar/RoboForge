@@ -42,11 +42,15 @@ function buildServo(g: ServoGeom, model: string, sticker: string[]): PartBuilder
     const shaftX = -L / 2 + g.shaftFromEnd * MM;
     group.add(cyl((g.bossD / 2) * MM, g.bossH * MM, shell, shaftX, H + (g.bossH / 2) * MM, 0, 48));
     group.add(cyl(((g.bossD / 2) * 0.45) * MM, 1.0 * MM, shell, shaftX + (g.bossD * 0.55) * MM, H + 0.5 * MM, 0, 32));
+    // everything above the boss turns with the output shaft: a group pivoting on the shaft axis
+    const output = new THREE.Group();
+    output.position.set(shaftX, 0, 0);
+    group.add(output);
     const spline = g === MG996R ? PBR.brass() : plastic(0xf2f2ee, 0.5);
-    group.add(cyl(2.4 * MM, 3.0 * MM, spline, shaftX, H + (g.bossH + 1.5) * MM, 0, 24));
+    output.add(cyl(2.4 * MM, 3.0 * MM, spline, 0, H + (g.bossH + 1.5) * MM, 0, 24));
     const hornTop = H + (g.bossH + 3.0) * MM;
     const horn = plastic(0xf5f5f0, 0.45);
-    group.add(cyl(3.6 * MM, 4.0 * MM, horn, shaftX, hornTop + 2.0 * MM, 0, 32));
+    output.add(cyl(3.6 * MM, 4.0 * MM, horn, 0, hornTop + 2.0 * MM, 0, 32));
     const arm = new THREE.Shape();
     arm.moveTo(0, -2.6);
     arm.lineTo(g.hornLen, -1.6);
@@ -57,18 +61,18 @@ function buildServo(g: ServoGeom, model: string, sticker: string[]): PartBuilder
     armGeo.scale(MM, MM, MM);
     armGeo.rotateX(-Math.PI / 2);
     const armMesh = new THREE.Mesh(armGeo, horn);
-    // the arm lies along the case, over the body, the way servos are sold
-    armMesh.position.set(shaftX, hornTop + 2.4 * MM, 0);
+    // at 90 degrees (the middle) the arm lies along the case, over the body, the way servos are sold
+    armMesh.position.set(0, hornTop + 2.4 * MM, 0);
     armMesh.castShadow = true;
-    group.add(armMesh);
+    output.add(armMesh);
     const holeMat = plastic(0x1c1c1e, 0.8);
     for (let i = 1; i <= 5; i += 1) {
       const hole = new THREE.Mesh(new THREE.CircleGeometry(0.42 * MM, 14), holeMat);
       hole.rotation.x = -Math.PI / 2;
-      hole.position.set(shaftX + ((2.6 + ((g.hornLen - 2.6) * i) / 5.4) * MM), hornTop + 4.21 * MM, 0);
-      group.add(hole);
+      hole.position.set((2.6 + ((g.hornLen - 2.6) * i) / 5.4) * MM, hornTop + 4.21 * MM, 0);
+      output.add(hole);
     }
-    group.add(cyl(1.0 * MM, 0.4 * MM, PBR.steelDark(), shaftX, hornTop + 4.2 * MM, 0, 16));
+    output.add(cyl(1.0 * MM, 0.4 * MM, PBR.steelDark(), 0, hornTop + 4.2 * MM, 0, 16));
     // the maker's sticker on the north face
     sideLabel(group, sticker, g.bodyL * 0.8, g.caseH * 0.36, 0, H * 0.48, -W / 2 - 0.0015, -1, { bg: 'rgba(244,244,240,0.96)' });
 
@@ -95,7 +99,10 @@ function buildServo(g: ServoGeom, model: string, sticker: string[]): PartBuilder
       tip.position.set(tipX - 0.3 * MM, 1.4 * MM, z);
       group.add(tip);
     }
-    void model;
+    // datasheet speed at 4.8 V: SG90 0.1 s per 60 degrees, MG996R 0.17 s per 60 degrees
+    output.userData.degPerSec = model === 'MG996R' ? 350 : 600;
+    output.userData.angle = 90;
+    return { servoHorn: output };
   };
 }
 

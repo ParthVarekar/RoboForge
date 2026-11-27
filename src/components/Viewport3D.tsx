@@ -17,6 +17,7 @@ import type {
   ArenaVehicleMode,
   DroneFlightInput,
 } from '../engine/arenaPhysics';
+import type { ActuatorFrame } from '../engine/actuators';
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
 import type { DisplayBench } from '../engine/displays/panels';
 import { paintDisplays } from '../viewport/displayPainter';
@@ -63,6 +64,13 @@ export interface Viewport3DProps {
   physicsRef: React.MutableRefObject<ArenaPhysicsEngine>;
   liveMotorsRef: React.MutableRefObject<MotorDriveOutput[]>;
   livePinPwmRef: React.MutableRefObject<ReadonlyMap<number, number>>;
+  /** What the servos, buzzers and relays are doing (from the sketch and the wiring). */
+  liveActuatorsRef: React.MutableRefObject<ActuatorFrame>;
+  /** The air a DHT22 measures, set with its card. */
+  benchAir: { tempC: number; humidity: number };
+  onBenchAirChange: (air: { tempC: number; humidity: number }) => void;
+  soundOn: boolean;
+  onToggleSound: () => void;
   manualDriveRef: React.MutableRefObject<{ left: number; right: number }>;
   droneInputRef: React.MutableRefObject<DroneFlightInput>;
   benchDistanceCm: number;
@@ -112,6 +120,11 @@ export function Viewport3D({
   physicsRef,
   liveMotorsRef,
   livePinPwmRef,
+  liveActuatorsRef,
+  benchAir,
+  onBenchAirChange,
+  soundOn,
+  onToggleSound,
   manualDriveRef,
   droneInputRef,
   benchDistanceCm,
@@ -357,7 +370,7 @@ export function Viewport3D({
       callbacksRef.current.onSyncLiveFrame();
 
       if (mode === 'workbench' && benchSceneRef.current) {
-        benchSceneRef.current.updateLiveState(livePinPwmRef.current, liveMotorsRef.current);
+        benchSceneRef.current.updateLiveState(livePinPwmRef.current, liveMotorsRef.current, liveActuatorsRef.current);
         paintDisplays(benchSceneRef.current.displaySurfaces(), displays, now);
         benchSceneRef.current.render(dt);
       } else if (mode === 'arena' && arenaSceneRef.current) {
@@ -411,6 +424,7 @@ export function Viewport3D({
     analysis.sensors.ledPins,
     liveMotorsRef,
     livePinPwmRef,
+    liveActuatorsRef,
     manualDriveRef,
     droneInputRef,
     physicsRef,
@@ -422,6 +436,8 @@ export function Viewport3D({
   };
 
   const hasUltrasonic = project.components.some((c) => c.kind === 'hcsr04');
+  const hasDht = project.components.some((c) => c.kind === 'dht22');
+  const hasSoundParts = project.components.some((c) => c.kind === 'buzzer_active' || c.kind === 'relay_1ch');
   const camFeedEnabled = analysis.sensors.camPowered || vehicleMode === 'drone';
 
   return (
@@ -567,6 +583,50 @@ export function Viewport3D({
               onChange={(ev) => onBenchDistanceChange(Number(ev.target.value))}
             />
           </div>
+        )}
+
+        {mode === 'workbench' && hasDht && (
+          <div className="float-card" style={{ padding: '6px 9px', width: 185 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: 'var(--accent-strong)' }}>
+              <span>DHT22 AIR</span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>
+                {benchAir.tempC.toFixed(1)} °C · {Math.round(benchAir.humidity)} %
+              </span>
+            </div>
+            <input
+              type="range"
+              aria-label="Air temperature for the DHT22 (degrees C)"
+              min={-10}
+              max={50}
+              step={0.5}
+              value={benchAir.tempC}
+              style={{ width: '100%', marginTop: 2 }}
+              onChange={(ev) => onBenchAirChange({ ...benchAir, tempC: Number(ev.target.value) })}
+            />
+            <input
+              type="range"
+              aria-label="Relative humidity for the DHT22 (%)"
+              min={0}
+              max={100}
+              step={1}
+              value={benchAir.humidity}
+              style={{ width: '100%' }}
+              onChange={(ev) => onBenchAirChange({ ...benchAir, humidity: Number(ev.target.value) })}
+            />
+          </div>
+        )}
+
+        {mode === 'workbench' && hasSoundParts && (
+          <button
+            type="button"
+            className="float-card"
+            aria-pressed={soundOn}
+            title="Buzzer tone and relay clicks"
+            style={{ padding: '5px 9px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer', color: soundOn ? 'var(--accent-strong)' : 'var(--text-muted)' }}
+            onClick={onToggleSound}
+          >
+            Sound {soundOn ? 'on' : 'off'}
+          </button>
         )}
 
         {mode === 'arena' && arenaEditTool !== 'select' && (

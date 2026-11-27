@@ -1,3 +1,4 @@
+import { createActuatorLibraries, type DhtReading } from './actuatorLibs';
 import { SKETCH_SOURCE_URL, transpileArduinoSketch, type SketchProblem } from './sketchTranspiler';
 import { MonoGfx, SSD1306_WHITE } from './displays/gfx';
 import { createDisplayLibraries } from './displays/libraries';
@@ -35,6 +36,8 @@ export interface HardwareEnvironmentHooks {
   onOledUpdate?: (lines: string[]) => void;
   /** The display modules on the bench (OLED, LCD), driven by the display libraries and the `oled` helper. */
   displays?: () => DisplayBench | null;
+  /** The DHT sensor wired and powered with DATA on this pin, with the air it measures; null if none answers there. */
+  readDht?: (pin: number) => DhtReading | null;
   onSerial: (entry: SerialEntry) => void;
   /** A fault while the sketch runs; `line` is the sketch line when it can be found from the stack. */
   onRuntimeError: (message: string, line?: number) => void;
@@ -129,6 +132,10 @@ export class VirtualEsp32Runtime {
   private lastPauseReal = 0;
   private lineOffset = 2;
   private ledcChannels = new Map<number, number>();
+  /** Servo pulse width (us) per pin, while a Servo object sends pulses there. */
+  private servoPulse = new Map<number, number>();
+  /** tone() per pin: frequency and, for a timed tone, when it ends (sketch clock). */
+  private tones = new Map<number, { freq: number; untilMs: number | null }>();
   private loopPromise: Promise<void> | null = null;
   /** Hints already shown this run (each once). */
   private hintsShown = new Set<string>();
@@ -144,6 +151,20 @@ export class VirtualEsp32Runtime {
    */
   public getPinPwmMap(): ReadonlyMap<number, number> {
     return this.pinPwm;
+  }
+
+  /** Servo pulse widths (us) by GPIO, for the pins a Servo object is attached to. */
+  public getServoPulses(): ReadonlyMap<number, number> {
+    return this.servoPulse;
+  }
+
+  /** Frequencies (Hz) of the tone() calls still sounding, by GPIO. */
+  public getActiveTones(): ReadonlyMap<number, number> {
+    const out = new Map<number, number>();
+    if (!this.running) return out;
+    const now = this.nowMs();
+    for (const [pin, t] of this.tones) if (t.untilMs === null || now < t.untilMs) out.set(pin, t.freq);
+    return out;
   }
 
   /**
@@ -211,6 +232,8 @@ export class VirtualEsp32Runtime {
     }
     this.lineOffset = compiled.lineOffset;
     this.ledcChannels.clear();
+    this.servoPulse.clear();
+    this.tones.clear();
 
     this.pinModes.clear();
     this.pinPwm.clear();
@@ -256,6 +279,9 @@ export class VirtualEsp32Runtime {
     this.stopRequested = true;
     this.running = false;
     this.pinPwm.clear();
+    // no more servo pulses (a servo then stays where it is) and no more tones
+    this.servoPulse.clear();
+    this.tones.clear();
     this.hooks.onRunningChange?.(false);
   }
 
@@ -302,6 +328,8 @@ export class VirtualEsp32Runtime {
     } finally {
       this.running = false;
       this.pinPwm.clear();
+      this.servoPulse.clear();
+      this.tones.clear();
       this.hooks.onRunningChange?.(false);
     }
   }
@@ -366,6 +394,31 @@ export class VirtualEsp32Runtime {
       checkStop,
     });
     this.displayTick = libs.tick;
+    const hintOnce = (text: string) => {
+      if (this.hintsShown.has(text)) return;
+      this.hintsShown.add(text);
+      this.emitSerial(text, 'warn');
+    };
+    const actuators = createActuatorLibraries({
+      checkStop,
+      nowMs: () => Math.max(0, this.nowMs() - this.startPerfMs),
+      hint: hintOnce,
+      assertOutput: (pin, what) => {
+        if (INPUT_ONLY_PINS.has(pin)) throw new Error(`${what}: GPIO${pin} is input-only on ESP32 and cannot drive an output.`);
+      },
+      setServoPulse: (pin, us) => {
+        if (us === null) this.servoPulse.delete(pin);
+        else this.servoPulse.set(pin, us);
+      },
+      setTone: (pin, freq, untilMs) => {
+        // the sketch clock counts from the start; tones keep the absolute end time
+        this.tones.set(pin, { freq, untilMs: untilMs === null ? null : untilMs + this.startPerfMs });
+      },
+      clearTone: (pin) => {
+        this.tones.delete(pin);
+      },
+      readDht: (pin) => this.hooks.readDht?.(pin) ?? null,
+    });
     /** The simple `oled` helper draws its lines with the built-in font on the first OLED that is wired. */
     const helperGfx = new MonoGfx(128, 64);
     const helperOled = (): Ssd1306Panel | null => {
@@ -415,9 +468,14 @@ export class VirtualEsp32Runtime {
       DEC: 10,
       HEX: 16,
       ...libs.constants,
+      ...actuators.constants,
       Wire: libs.Wire,
       Adafruit_SSD1306: libs.Adafruit_SSD1306,
       LiquidCrystal_I2C: libs.LiquidCrystal_I2C,
+      Servo: actuators.Servo,
+      DHT: actuators.DHT,
+      tone: actuators.tone,
+      noTone: actuators.noTone,
       pinMode: (pin: number, mode: PinModeValue) => {
         checkStop();
         if (mode === 'OUTPUT' && INPUT_ONLY_PINS.has(pin)) {

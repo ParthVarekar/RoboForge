@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getPinSpec } from '../catalog/partsCatalog';
+import { EMPTY_ACTUATORS, relayLedLit, type ActuatorFrame } from '../engine/actuators';
 import type { CircuitAnalysis, MotorDriveOutput } from '../engine/circuit';
 import { pinKey } from '../engine/circuit';
 import { pinRefusal } from '../engine/pinCapacity';
@@ -113,6 +114,9 @@ export class WorkbenchScene {
 
   private livePinPwm: ReadonlyMap<number, number> = new Map();
   private liveMotors: MotorDriveOutput[] = [];
+  private liveActuators: ActuatorFrame = EMPTY_ACTUATORS;
+  /** Sound rings shown over each sounding buzzer, made the first time it sounds. */
+  private soundRings = new Map<string, THREE.Mesh[]>();
   private built = false;
   private hoverPin: THREE.Mesh | null = null;
   /** Camera glide target for "Fit" and double-click focus: orbit target and camera position to ease towards. */
@@ -340,9 +344,64 @@ export class WorkbenchScene {
   /**
    * Updates live electrical telemetry (GPIO PWM map and resolved motor outputs) for 3D animations.
    */
-  public updateLiveState(pinPwm: ReadonlyMap<number, number>, motors: MotorDriveOutput[]): void {
+  public updateLiveState(pinPwm: ReadonlyMap<number, number>, motors: MotorDriveOutput[], actuators: ActuatorFrame = EMPTY_ACTUATORS): void {
     this.livePinPwm = pinPwm;
     this.liveMotors = motors;
+    this.liveActuators = actuators;
+  }
+
+  /** Servo horns turn toward their commanded angle at the servo's speed; buzzers shake and ring; relay LEDs follow. */
+  private animateActuators(dt: number): void {
+    const frame = this.liveActuators;
+    for (const handle of this.handles.values()) {
+      const horn = handle.servoHorn;
+      if (horn) {
+        const angle = Number(horn.userData.angle ?? 90);
+        const target = frame.servoTargets.get(handle.componentId);
+        if (target !== undefined && Math.abs(target - angle) > 0.05) {
+          const step = Number(horn.userData.degPerSec ?? 500) * dt;
+          const next = angle + Math.max(-step, Math.min(step, target - angle));
+          horn.userData.angle = next;
+          // 90 degrees is the arm along the case; larger angles turn it counter-clockwise seen from above
+          horn.rotation.y = ((next - 90) * Math.PI) / 180;
+        }
+      }
+      if (handle.soundBody) {
+        const freq = frame.buzzers.get(handle.componentId);
+        const body = handle.soundBody;
+        if (body.userData.restX === undefined) body.userData.restX = body.position.x;
+        body.position.x = Number(body.userData.restX) + (freq ? Math.sin(this.animTime * 190) * 0.0025 : 0);
+        this.animateSoundRings(handle.componentId, body, freq !== undefined);
+      }
+      if (handle.statusLed) handle.statusLed.emissiveIntensity = frame.relaysOn.has(handle.componentId) ? 2.2 : 0.05;
+    }
+  }
+
+  private animateSoundRings(id: string, body: THREE.Object3D, on: boolean): void {
+    let rings = this.soundRings.get(id);
+    // the part was rebuilt (moved, re-wired): the old rings went with the old body
+    if (rings && rings[0]?.parent !== body) rings = undefined;
+    if (!rings) {
+      if (!on) return;
+      rings = [0, 1, 2].map(() => {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.62, 0.022, 6, 48),
+          new THREE.MeshBasicMaterial({ color: 0x14b8a6, transparent: true, opacity: 0, depthWrite: false }),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.userData = { noPick: true, noFrame: true };
+        ring.raycast = () => undefined;
+        body.add(ring);
+        return ring;
+      });
+      this.soundRings.set(id, rings);
+    }
+    rings.forEach((ring, i) => {
+      const phase = (this.animTime * 1.6 + i / 3) % 1;
+      ring.position.y = 0.95 + phase * 0.5;
+      ring.scale.setScalar(0.7 + phase * 0.9);
+      (ring.material as THREE.MeshBasicMaterial).opacity = on ? 0.8 * (1 - phase) : 0;
+    });
   }
 
   /** The screens of the display parts on the bench (OLED, LCD), for the display painter. */
@@ -460,16 +519,20 @@ export class WorkbenchScene {
       }
     }
 
-    // Animate LEDs
+    // Animate LEDs (driven from a GPIO, or switched by a relay contact)
     for (const ledInfo of this.analysis.sensors.ledPins) {
       const handle = this.handles.get(ledInfo.componentId);
       if (!handle?.ledMaterial) continue;
-      const pwm =
-        this.analysis.sensors.esp32Powered && ledInfo.gpio !== null
+      const pwm = ledInfo.relay
+        ? relayLedLit(this.liveActuators, ledInfo.relay)
+          ? 255
+          : 0
+        : this.analysis.sensors.esp32Powered && ledInfo.gpio !== null
           ? (this.livePinPwm.get(ledInfo.gpio) ?? 0)
           : 0;
       handle.ledMaterial.emissiveIntensity = 0.12 + (pwm / 255) * 2.4;
     }
+    this.animateActuators(dt);
 
     for (const comp of this.project.components) {
       if (comp.kind === 'esp32_devkit') {

@@ -27,13 +27,16 @@ buck, LiPo and Li-ion packs, and the passives. Headers sit at 2.54 mm and a wire
 that is drawn; leads and pads get soldered joints. Dimensions, pin orders and sources are listed in
 [docs/06_COMPONENT_REFERENCES.md](docs/06_COMPONENT_REFERENCES.md), including what is simplified.
 
-The library also has 35 more parts for wiring and checking (not simulated yet): SG90 and MG996R servos, a 28BYJ-48
+The library also has 35 more parts: SG90 and MG996R servos, a 28BYJ-48
 stepper on its ULN2003 board, an N20 gearmotor, L298N, TB6612FNG and A4988 drivers, Arduino Nano and Raspberry Pi
 Pico, DHT22, BME280, VL53L0X, HC-SR501 PIR, TCRT5000, NEO-6M GPS and DS3231 clock, a WS2812B stick, TM1637 and
 MAX7219 displays, a joystick and a pot, HC-05, nRF24L01+ and microSD modules, MT3608, TP4056 and AMS1117 power
 boards, a 4 x AA holder, a rocker switch, and loose diodes, transistors and capacitors. The circuit check uses their
-real voltage ratings (for example 5 V on the BME280 or the nRF24L01+ is flagged). The full equipment list with what is
-in, what was added and what is planned is [docs/07_PARTS_LIBRARY.md](docs/07_PARTS_LIBRARY.md).
+real voltage ratings (for example 5 V on the BME280 or the nRF24L01+ is flagged). The servos, the buzzer, the relay
+and the DHT22 also run in the simulator: sketches use the real `ESP32Servo` and `DHT` libraries and `tone()`, the horn
+turns, the buzzer sounds, the relay switches an LED, and you set the air the DHT22 measures on the bench (see the
+Actuator Lab preset). The others are wiring only for now. The full equipment list with what is in, what was added
+and what is planned is [docs/07_PARTS_LIBRARY.md](docs/07_PARTS_LIBRARY.md).
 
 ### Sketch editor
 

@@ -17,7 +17,7 @@ export const buildBuzzerActive: PartBuilder = ({ group }) => {
       p.silkCircle(9.25, 5.9, 6.3, 0.15);
     },
   });
-  buzzer12(group, { at: board.at(9.25, 5.9), sealed: true });
+  return { soundBody: buzzer12(group, { at: board.at(9.25, 5.9), sealed: true }) };
 };
 
 /* ================================================================== 1-channel relay */
@@ -52,10 +52,11 @@ export const buildRelay1ch: PartBuilder = ({ group }) => {
   sot23(group, { at: at(10.6, 12.2), marking: ['J3Y'] });
   diodeSma(group, { at: at(14.0, 9.0), marking: 'M7', rot: Math.PI / 2 });
   ledSmd(group, { at: at(9.0, 3.4), code: '0805', color: 0xff2a1a, glow: 0.12 });
-  ledSmd(group, { at: at(9.0, 22.6), code: '0805', color: 0x2ed060, glow: 0.05 });
+  const statusLed = ledSmd(group, { at: at(9.0, 22.6), code: '0805', color: 0x2ed060, glow: 0.05 });
   chipPassive(group, { at: at(11.6, 3.4), code: '0805', kind: 'R', marking: '102' });
   chipPassive(group, { at: at(11.6, 22.6), code: '0805', kind: 'R', marking: '102' });
   chipPassive(group, { at: at(8.2, 17.2), code: '0805', kind: 'R', marking: '102', rot: Math.PI / 2 });
+  return { statusLed };
 };
 
 /* ================================================================== WS2812B stick (8 LEDs) */

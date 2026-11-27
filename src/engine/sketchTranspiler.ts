@@ -781,7 +781,7 @@ function includeWarnings(stripped: string): SketchProblem[] {
       endColumn: line.trimEnd().length + 1,
       message: advice
         ? `<${header}>: ${advice}`
-        : `<${header}> is not part of the simulator; only the ESP32 core, Wire, Adafruit_SSD1306 (Adafruit_GFX) and LiquidCrystal_I2C are available, so calls into it will fail`,
+        : `<${header}> is not part of the simulator; only the ESP32 core, Wire, Adafruit_SSD1306 (Adafruit_GFX), LiquidCrystal_I2C, ESP32Servo and DHT are available, so calls into it will fail`,
       severity: 'warning',
     });
   });
@@ -1230,7 +1230,10 @@ export function transpileArduinoSketch(source: string): TranspileResult | Transp
   try {
     const commentFree = stripComments(source.replace(/\r\n?/g, '\n'));
     // PROGMEM (keep in flash) only matters on AVR boards; drop it so the declaration reads as a plain array
-    const stripped = commentFree.replace(/\bPROGMEM\b/g, (w, at: number) => (maskLiterals(commentFree).slice(at, at + w.length) === w ? ' '.repeat(w.length) : w));
+    // ESP32Servo examples reserve PWM timers with ESP32PWM::allocateTimer(n); the simulator needs no timers
+    const stripped = commentFree
+      .replace(/\bPROGMEM\b/g, (w, at: number) => (maskLiterals(commentFree).slice(at, at + w.length) === w ? ' '.repeat(w.length) : w))
+      .replace(/\bESP32PWM\s*::\s*allocateTimer\s*\([^()\n]*\)\s*;/g, (w) => ' '.repeat(w.length));
     const enums = new Set<string>();
     // enum type names are needed before anything else looks for declarations
     for (const em of maskLiterals(stripped).matchAll(/\benum\s+([A-Za-z_]\w*)\s*\{/g)) if (em[1]) enums.add(em[1]);

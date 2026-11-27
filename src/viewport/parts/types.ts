@@ -12,6 +12,12 @@ export interface PartBuildResult {
   display?: DisplaySurface | null;
   /** Moving part of a push button; carries `userData.restY` and `userData.travel` (cm). */
   buttonCap?: THREE.Mesh | null;
+  /** A servo's output: horn and spline, turning about its own vertical axis (rotation.y 0 = 90 degrees). */
+  servoHorn?: THREE.Object3D | null;
+  /** The body that sounds or vibrates (a buzzer), for its animation. */
+  soundBody?: THREE.Object3D | null;
+  /** A module's status LED that follows its output (the relay's "on" LED). */
+  statusLed?: THREE.MeshStandardMaterial | null;
 }
 
 export interface PartBuildContext {

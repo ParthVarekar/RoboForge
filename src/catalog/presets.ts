@@ -468,6 +468,71 @@ void loop() {
 }
 `;
 
+export const ACTUATOR_LAB_SKETCH = `// Actuator Lab: SG90 servo, active buzzer, relay with an LED, DHT22.
+// Move the DHT22 AIR sliders on the bench: the servo shows the temperature
+// like a gauge (0-40 C over 0-180 degrees), the buzzer beeps above 30 C, and
+// the relay turns the LED on while the humidity is above 60 %.
+#include <ESP32Servo.h>
+#include <DHT.h>
+
+const int SERVO_PIN = 18;
+const int BUZZER_PIN = 19;
+const int RELAY_PIN = 23;
+const int DHT_PIN = 4;
+
+Servo gauge;
+DHT dht(DHT_PIN, DHT22);
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  gauge.attach(SERVO_PIN);
+  dht.begin();
+  // one sweep so you can see the servo work
+  for (int a = 0; a <= 180; a += 10) {
+    gauge.write(a);
+    delay(40);
+  }
+  for (int a = 180; a >= 90; a -= 10) {
+    gauge.write(a);
+    delay(40);
+  }
+  Serial.println("Actuator Lab ready");
+}
+
+void loop() {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (isnan(t) || isnan(h)) {
+    Serial.println("DHT22 read failed: check its wiring");
+    delay(2000);
+    return;
+  }
+
+  int angle = constrain(map(t, 0, 40, 0, 180), 0, 180);
+  gauge.write(angle);
+
+  digitalWrite(RELAY_PIN, h > 60 ? HIGH : LOW);
+
+  if (t > 30) {
+    // an active buzzer sounds by itself while its signal is HIGH
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(120);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  Serial.print("T=");
+  Serial.print(t, 1);
+  Serial.print(" C  H=");
+  Serial.print(h, 0);
+  Serial.print(" %  servo=");
+  Serial.print(angle);
+  Serial.println(h > 60 ? "  relay ON" : "  relay off");
+  delay(500);
+}
+`;
+
 export const SKETCH_TEMPLATES: SketchTemplate[] = [
   { id: 'bag_pass', label: 'Bag-Pass + Heading-Hold + OLED', code: BAG_PASS_SKETCH },
   { id: 'room_mapper', label: 'Autonomous 360° Room Mapper', code: ROOM_MAPPING_SKETCH },
@@ -476,6 +541,7 @@ export const SKETCH_TEMPLATES: SketchTemplate[] = [
   { id: 'serial_cmd', label: 'Serial Console & Sensors', code: TELEMETRY_SERIAL_SKETCH },
   { id: 'oled_dashboard', label: 'Rover OLED Dashboard (Adafruit_SSD1306)', code: OLED_DASHBOARD_SKETCH },
   { id: 'display_lab', label: 'Display Lab: OLED + 16x2 LCD', code: DISPLAY_LAB_SKETCH },
+  { id: 'actuator_lab', label: 'Actuator Lab: servo, buzzer, relay, DHT22', code: ACTUATOR_LAB_SKETCH },
   { id: 'i2c_scanner', label: 'I2C Scanner', code: I2C_SCANNER_SKETCH },
 ];
 
@@ -720,6 +786,70 @@ function makeDisplayLabPreset(): StudioProject {
   };
 }
 
+function makeActuatorLabPreset(): StudioProject {
+  const w = (id: string, from: [string, string], to: [string, string], color: string): StudioProject['wires'][number] => ({
+    id,
+    from: { componentId: from[0], pinId: from[1] },
+    to: { componentId: to[0], pinId: to[1] },
+    color,
+    style: 'routed',
+  });
+  const RED = '#ef4444';
+  const BLACK = '#1e293b';
+  return {
+    version: 1,
+    name: 'Actuator Lab (servo, buzzer, relay, DHT22)',
+    description:
+      'ESP32 with an SG90 servo on GPIO18, an active buzzer on GPIO19, a 5 V relay on GPIO23 switching an LED, and a DHT22 on GPIO4 with its 10 k pull-up. The servo, buzzer and relay run from the 5.2 V buck, the DHT22 from 3V3.',
+    circuitProtection: true,
+    code: ACTUATOR_LAB_SKETCH,
+    obstacles: DEFAULT_ARENA_OBSTACLES,
+    faults: DEFAULT_FAULTS,
+    components: [
+      { id: 'esp32_1', kind: 'esp32_devkit', label: 'ESP32 Main', position: [-6.5, 0, 0], rotationY: 0 },
+      { id: 'servo_1', kind: 'servo_sg90', label: 'SG90 Servo', position: [4.6, 0, -6.2], rotationY: Math.PI },
+      { id: 'buzzer_1', kind: 'buzzer_active', label: 'Buzzer', position: [-1.8, 0, -4.4], rotationY: 0 },
+      { id: 'relay_1', kind: 'relay_1ch', label: 'Relay 5V', position: [4.2, 0, 0.6], rotationY: 0 },
+      { id: 'r_led', kind: 'resistor_10k', label: 'R LED', position: [9.2, 0, 0.1], rotationY: 0 },
+      { id: 'led_1', kind: 'led_5mm', label: 'Relay LED', position: [11.6, 0, 1.6], rotationY: 0 },
+      { id: 'dht_1', kind: 'dht22', label: 'DHT22', position: [0.2, 0, 4.2], rotationY: 0 },
+      { id: 'r_pu', kind: 'resistor_10k', label: 'R pull-up', position: [-2.4, 0, 6.2], rotationY: 0 },
+      { id: 'sp_3v3', kind: 'wire_splice', label: 'Splice 3V3', position: [-3.4, 0, 3.6], rotationY: Math.PI / 2 },
+      { id: 'sp_5v', kind: 'wire_splice', label: 'Splice 5V', position: [1.4, 0, -2.4], rotationY: Math.PI / 2 },
+      { id: 'sp_gnd', kind: 'wire_splice', label: 'Splice GND', position: [2.6, 0, -2.4], rotationY: Math.PI / 2 },
+      { id: 'buck_1', kind: 'lm2596_buck', label: 'LM2596 5.2V', position: [4.6, 0, 8.4], rotationY: 0 },
+      { id: 'bat_1', kind: 'battery_2s', label: '2S Li-Ion 7.4V', position: [-7.2, 0, 8.6], rotationY: 0 },
+    ],
+    wires: [
+      w('a1', ['bat_1', 'BAT_POS'], ['buck_1', 'IN_POS'], RED),
+      w('a2', ['bat_1', 'GND'], ['buck_1', 'IN_NEG'], BLACK),
+      w('a3', ['buck_1', 'OUT_POS'], ['esp32_1', 'VIN'], RED),
+      w('a4', ['buck_1', 'OUT_NEG'], ['esp32_1', 'GND_L'], BLACK),
+      w('a5', ['buck_1', 'OUT_POS'], ['sp_5v', 'J'], RED),
+      w('a6', ['buck_1', 'OUT_NEG'], ['sp_gnd', 'J'], BLACK),
+      w('a7', ['sp_5v', 'J'], ['servo_1', 'VCC'], RED),
+      w('a8', ['sp_gnd', 'J'], ['servo_1', 'GND'], BLACK),
+      w('a9', ['esp32_1', 'GPIO18'], ['servo_1', 'SIG'], '#f59e0b'),
+      w('a10', ['sp_5v', 'J'], ['buzzer_1', 'VCC'], RED),
+      w('a11', ['sp_gnd', 'J'], ['buzzer_1', 'GND'], BLACK),
+      w('a12', ['esp32_1', 'GPIO19'], ['buzzer_1', 'SIG'], '#22c55e'),
+      w('a13', ['sp_5v', 'J'], ['relay_1', 'VCC'], RED),
+      w('a14', ['sp_gnd', 'J'], ['relay_1', 'GND'], BLACK),
+      w('a15', ['esp32_1', 'GPIO23'], ['relay_1', 'IN'], '#3b82f6'),
+      w('a16', ['buck_1', 'OUT_POS'], ['relay_1', 'COM'], RED),
+      w('a17', ['relay_1', 'NO'], ['r_led', 'A'], '#eab308'),
+      w('a18', ['r_led', 'B'], ['led_1', 'ANODE'], '#eab308'),
+      w('a19', ['led_1', 'CATHODE'], ['buck_1', 'OUT_NEG'], BLACK),
+      w('a20', ['esp32_1', '3V3'], ['sp_3v3', 'J'], '#f43f5e'),
+      w('a21', ['sp_3v3', 'J'], ['dht_1', 'VCC'], '#f43f5e'),
+      w('a22', ['sp_3v3', 'J'], ['r_pu', 'A'], '#f43f5e'),
+      w('a23', ['r_pu', 'B'], ['dht_1', 'DATA'], '#a855f7'),
+      w('a24', ['esp32_1', 'GPIO4'], ['dht_1', 'DATA'], '#a855f7'),
+      w('a25', ['dht_1', 'GND'], ['buck_1', 'OUT_NEG'], BLACK),
+    ],
+  };
+}
+
 function makeRoomMapperPreset(): StudioProject {
   const base = makeRoboForgeRoverPreset();
   return {
@@ -743,6 +873,7 @@ export const STUDIO_PRESETS: PresetEntry[] = [
   { id: 'quad_5in', label: '5-Inch Freestyle Quadcopter', create: makeQuad5InPreset },
   { id: 'fault_lab', label: 'Circuit Fault Diagnostics Lab', create: makeFaultLabPreset },
   { id: 'display_lab', label: 'Display Lab: OLED + 16x2 LCD', create: makeDisplayLabPreset },
+  { id: 'actuator_lab', label: 'Actuator Lab: servo, buzzer, relay, DHT22', create: makeActuatorLabPreset },
   { id: 'blank_bench', label: 'Blank Workbench', create: makeBlankBenchPreset },
 ];
 

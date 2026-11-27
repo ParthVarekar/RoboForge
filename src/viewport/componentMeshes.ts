@@ -15,6 +15,9 @@ export interface ComponentVisualHandle {
   ledMaterial: THREE.MeshStandardMaterial | null;
   display: DisplaySurface | null;
   buttonCap: THREE.Mesh | null;
+  servoHorn: THREE.Object3D | null;
+  soundBody: THREE.Object3D | null;
+  statusLed: THREE.MeshStandardMaterial | null;
   faultRing: THREE.Mesh;
 }
 
@@ -157,6 +160,9 @@ export function buildComponentGroup(instance: ComponentInstance): ComponentVisua
     ledMaterial: result.ledMaterial ?? null,
     display: result.display ?? null,
     buttonCap: result.buttonCap ?? null,
+    servoHorn: result.servoHorn ?? null,
+    soundBody: result.soundBody ?? null,
+    statusLed: result.statusLed ?? null,
     faultRing,
   };
 }

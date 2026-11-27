@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPresetProject } from '../../catalog/presets';
+import { createActuatorLibraries } from '../actuatorLibs';
 import { analyzeCircuit } from '../circuit';
 import { MonoGfx, SSD1306_WHITE } from '../displays/gfx';
 import { createDisplayLibraries } from '../displays/libraries';
@@ -317,9 +318,21 @@ void setup() {}`);
 
   it('lists every library member the runtime objects really have', () => {
     const libs = createDisplayLibraries({ bench: () => null, nowMs: () => 0, hint: () => undefined, checkStop: () => undefined });
+    const acts = createActuatorLibraries({
+      checkStop: () => undefined,
+      nowMs: () => 0,
+      hint: () => undefined,
+      assertOutput: () => undefined,
+      setServoPulse: () => undefined,
+      setTone: () => undefined,
+      clearTone: () => undefined,
+      readDht: () => null,
+    });
     const objects: Record<string, object> = {
       Adafruit_SSD1306: libs.Adafruit_SSD1306(128, 64, libs.Wire, -1),
       LiquidCrystal_I2C: libs.LiquidCrystal_I2C(0x27, 16, 2),
+      Servo: acts.Servo(),
+      DHT: acts.DHT(4, 22),
     };
     for (const cls of HAL_CLASSES) {
       for (const m of cls.members ?? []) expect(typeof (objects[cls.name] as Record<string, unknown>)[m.name], `${cls.name}.${m.name}`).toBe('function');
