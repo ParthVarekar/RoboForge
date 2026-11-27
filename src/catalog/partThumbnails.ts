@@ -1,4 +1,7 @@
 import type { ComponentKind } from '../schema/projectSchema';
+import { PARTS_CATALOG } from './partsCatalog';
+
+const esc = (t: string): string => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /**
  * Returns a crisp inline SVG data URI thumbnail depicting the physical silhouette of a catalog part.
@@ -187,5 +190,18 @@ export function getPartThumbnailSvg(kind: ComponentKind): string {
       return wrap(`<rect x="52" y="12" width="16" height="52" rx="3" fill="#dc2626" stroke="#991b1b" stroke-width="2"/>`);
     case 'cad_plate':
       return wrap(`<polygon points="22,42 50,22 98,34 70,54" fill="#27272a" stroke="#52525b" stroke-width="2"/>`);
+    default: {
+      // extended library: a board in the part's colour with its short name (the rendered 3D thumbnail replaces this
+      // as soon as WebGL has drawn it)
+      const spec = PARTS_CATALOG[kind];
+      const fill = esc(spec?.defaultColor ?? '#475569');
+      const name = esc((spec?.shortName ?? kind).slice(0, 14));
+      return wrap(`
+        <rect x="18" y="14" width="84" height="48" rx="5" fill="${fill}" stroke="#0f172a" stroke-opacity="0.45" stroke-width="2"/>
+        <g fill="#eab308">${Array.from({ length: 6 }, (_, i) => `<rect x="${38 + i * 8}" y="57" width="3" height="5"/>`).join('')}</g>
+        <rect x="26" y="24" width="68" height="20" rx="3" fill="#0f172a" fill-opacity="0.55"/>
+        <text x="60" y="37.5" font-size="9" font-family="monospace" text-anchor="middle" fill="#f8fafc">${name}</text>
+      `);
+    }
   }
 }

@@ -16,7 +16,7 @@ export interface Place {
   rot?: number;
 }
 
-function placed(g: THREE.Group, p: Place): THREE.Group {
+export function placed(g: THREE.Group, p: Place): THREE.Group {
   const sub = new THREE.Group();
   sub.position.copy(p.at);
   sub.rotation.y = p.rot ?? 0;
@@ -24,7 +24,7 @@ function placed(g: THREE.Group, p: Place): THREE.Group {
   return sub;
 }
 
-function mesh(geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], x = 0, y = 0, z = 0, shadow = true): THREE.Mesh {
+export function mesh(geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], x = 0, y = 0, z = 0, shadow = true): THREE.Mesh {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.castShadow = shadow;
@@ -32,10 +32,10 @@ function mesh(geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[],
   return m;
 }
 
-const rbox = (w: number, h: number, d: number, r: number, seg = 2) => new RoundedBoxGeometry(w * MM, h * MM, d * MM, seg, Math.min(r, w / 2, h / 2, d / 2) * MM);
+export const rbox = (w: number, h: number, d: number, r: number, seg = 2) => new RoundedBoxGeometry(w * MM, h * MM, d * MM, seg, Math.min(r, w / 2, h / 2, d / 2) * MM);
 
 /** A flat decal (marking, label) lying on a surface at height y (cm). */
-function decal(tex: THREE.Texture, wMm: number, dMm: number, y: number, opacity = 1): THREE.Mesh {
+export function decal(tex: THREE.Texture, wMm: number, dMm: number, y: number, opacity = 1): THREE.Mesh {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(wMm * MM, dMm * MM),
     new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity, roughness: 0.6, metalness: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
@@ -98,7 +98,7 @@ function leadRow(
 }
 
 /** Laser marking on a package top. Text runs along the longer side, as manufacturers print it. */
-function markingTop(lines: readonly string[], wMm: number, dMm: number, yTopCm: number, color = 'rgba(196,199,204,0.78)'): THREE.Mesh {
+export function markingTop(lines: readonly string[], wMm: number, dMm: number, yTopCm: number, color = 'rgba(196,199,204,0.78)'): THREE.Mesh {
   const along = dMm > wMm * 1.2;
   const tw = along ? dMm : wMm;
   const td = along ? wMm : dMm;
@@ -108,7 +108,7 @@ function markingTop(lines: readonly string[], wMm: number, dMm: number, yTopCm: 
   return m;
 }
 
-function pin1Dot(xMm: number, zMm: number, yTopCm: number, rMm = 0.3): THREE.Mesh {
+export function pin1Dot(xMm: number, zMm: number, yTopCm: number, rMm = 0.3): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.CircleGeometry(rMm * MM, 16), new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.3 }));
   m.rotation.x = -Math.PI / 2;
   m.position.set(xMm * MM, yTopCm + 0.001, zMm * MM);
@@ -153,6 +153,12 @@ export function soic(g: THREE.Group, p: IcOptions & { pins: number }): void {
   const perSide = p.pins / 2;
   const bodyL = Math.max(4.9, perSide * 1.27 + 0.6);
   icGull(g, p, { bodyW: 3.9, bodyL, bodyH: 1.5, perSide, pitch: 1.27, leadLen: 1.05, leadW: 0.42, standoff: 0.15 });
+}
+
+/** SOIC-n wide body (7.5 mm, 300 mil), 1.27 mm pitch, about 10.3 mm overall: DS3231SN, CH340G. */
+export function soicWide(g: THREE.Group, p: IcOptions & { pins: number }): void {
+  const perSide = p.pins / 2;
+  icGull(g, p, { bodyW: 7.5, bodyL: perSide * 1.27 + 0.2, bodyH: 2.35, perSide, pitch: 1.27, leadLen: 1.3, leadW: 0.42, standoff: 0.15 });
 }
 
 /** TSSOP-n / HTSSOP-n: 4.4 mm body, 0.65 mm pitch, 6.4 mm overall. */

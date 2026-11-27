@@ -27,6 +27,14 @@ buck, LiPo and Li-ion packs, and the passives. Headers sit at 2.54 mm and a wire
 that is drawn; leads and pads get soldered joints. Dimensions, pin orders and sources are listed in
 [docs/06_COMPONENT_REFERENCES.md](docs/06_COMPONENT_REFERENCES.md), including what is simplified.
 
+The library also has 35 more parts for wiring and checking (not simulated yet): SG90 and MG996R servos, a 28BYJ-48
+stepper on its ULN2003 board, an N20 gearmotor, L298N, TB6612FNG and A4988 drivers, Arduino Nano and Raspberry Pi
+Pico, DHT22, BME280, VL53L0X, HC-SR501 PIR, TCRT5000, NEO-6M GPS and DS3231 clock, a WS2812B stick, TM1637 and
+MAX7219 displays, a joystick and a pot, HC-05, nRF24L01+ and microSD modules, MT3608, TP4056 and AMS1117 power
+boards, a 4 x AA holder, a rocker switch, and loose diodes, transistors and capacitors. The circuit check uses their
+real voltage ratings (for example 5 V on the BME280 or the nRF24L01+ is flagged). The full equipment list with what is
+in, what was added and what is planned is [docs/07_PARTS_LIBRARY.md](docs/07_PARTS_LIBRARY.md).
+
 ### Sketch editor
 
 <img src="docs/assets/06_sketch_editor.webp" alt="Sketch editor showing a runtime fault on line 4" width="300" align="right" />
@@ -106,6 +114,8 @@ All documentation is organized in order inside [`docs/`](docs/):
    - Phase-by-phase build log, bugs caught and resolved during testing, exact unit test and headless Chrome WebGL Playwright E2E verification results, simulation honesty notes, and the step-by-step plan for strapping RoboForge's AI planner and hardware WebSocket console onto the studio.
 6. **[06 — Component References](docs/06_COMPONENT_REFERENCES.md)**
    - Real dimensions, pin orders and sources for every part, how boards, headers and packages are built, and what differs from the real parts.
+7. **[07 — Parts Library](docs/07_PARTS_LIBRARY.md)**
+   - The equipment small robot builds use, grouped by job, with what is simulated, what is wiring only and what is planned.
 
 ---
 

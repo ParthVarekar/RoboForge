@@ -117,20 +117,26 @@ function titleFor(platform: Platform, parts: PlanPart[]): string {
   return names.length ? `${base[0]!.toUpperCase()}${base.slice(1)} with ${names.join(', ')}`.slice(0, 80) : `${base[0]!.toUpperCase()}${base.slice(1)}`;
 }
 
-/** Things people ask for that the catalog does not have yet (said plainly instead of silently ignored). */
-const MISSING: Array<[RegExp, string]> = [
-  [/\b(temperature|thermo\w*|humidity|weather|dht\d*|bme\d*|bmp\d*)\b/, 'temperature or humidity sensor'],
-  [/\b(gps|gnss)\b/, 'GPS module'],
-  [/\b(servos?|robot arm|gripper|claw)\b/, 'servo'],
-  [/\b(buzzer|speaker|sound|beep\w*|music)\b/, 'buzzer or speaker'],
-  [/\b(relays?)\b/, 'relay'],
-  [/\b(lidar|line (sensor|follow\w*)|ir sensor|infrared)\b/, 'line or IR sensor'],
-  [/\b(soil|moisture|gas|smoke|light sensor|ldr|photo ?resistor)\b/, 'analog sensor (analog inputs are not simulated yet)'],
-  [/\b(rgb|neopixel|ws2812|led strip)\b/, 'RGB LED strip'],
+/**
+ * Things people ask for that this tab cannot place (said plainly instead of silently ignored). The flag says whether
+ * the part is in the Parts list already (wiring only, the user adds it by hand) or not in the library at all.
+ */
+const MISSING: Array<[RegExp, string, boolean]> = [
+  [/\b(temperature|thermo\w*|humidity|weather|dht\d*|bme\d*|bmp\d*)\b/, 'temperature or humidity sensor (DHT22, BME280)', true],
+  [/\b(gps|gnss)\b/, 'GPS module', true],
+  [/\b(servos?|robot arm|gripper|claw)\b/, 'servo', true],
+  [/\b(buzzer|beep\w*)\b/, 'buzzer', true],
+  [/\b(speaker|sound|music)\b/, 'speaker', false],
+  [/\b(relays?)\b/, 'relay', true],
+  [/\b(line (sensor|follow\w*)|ir sensor|infrared)\b/, 'line or IR sensor (TCRT5000)', true],
+  [/\b(lidar)\b/, 'lidar', false],
+  [/\b(soil|moisture|gas|smoke|light sensor|ldr|photo ?resistor)\b/, 'analog sensor (analog inputs are not simulated yet)', false],
+  [/\b(rgb|neopixel|ws2812|led strip)\b/, 'RGB LED strip (WS2812B stick)', true],
 ];
 
-function missingIn(t: string): string[] {
-  return MISSING.filter(([re]) => re.test(t)).map(([, name]) => name);
+function missingIn(t: string): { inList: string[]; absent: string[] } {
+  const hits = MISSING.filter(([re]) => re.test(t));
+  return { inList: hits.filter((m) => m[2]).map((m) => m[1]), absent: hits.filter((m) => !m[2]).map((m) => m[1]) };
 }
 
 export interface OfflineAnswer {
@@ -198,8 +204,11 @@ export function offlineTurn(text: string, current: BuildPlan | null, history: re
   };
   const listed = parts.map((p) => `${p.qty > 1 ? `${p.qty} x ` : ''}${partLabel(p.kind)}${p.kind === 'hcsr04' && p.placement === 'back' ? ' (rear)' : ''}`).join(', ');
   const skipped = notHere.length ? ` The ${notHere.map((p) => partLabel(p.kind)).join(' and ')} is not available on the ${PLATFORM_INFO[chosen].name}, so I left it out.` : '';
-  const missing = missingIn(all);
-  const lacking = missing.length ? ` The parts library has no ${missing.join(', no ')} yet, so that part of the idea is not in this build.` : '';
+  const { inList, absent } = missingIn(all);
+  const byHand = inList.length
+    ? ` This tab cannot place the ${inList.join(' or the ')} yet; ${inList.length > 1 ? 'they are' : 'it is'} in the Parts list (wiring only, not simulated), so add ${inList.length > 1 ? 'them' : 'it'} by hand after building.`
+    : '';
+  const lacking = byHand + (absent.length ? ` The parts library has no ${absent.join(', no ')} yet, so that part of the idea is not in this build.` : '');
   return {
     reply: `Here is a ${PLATFORM_INFO[chosen].name} with ${listed || 'no add-ons'}.${skipped}${lacking} The blueprint below shows where everything goes and how it is wired; change anything in words, or press Build.`,
     plan,

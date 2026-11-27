@@ -158,7 +158,9 @@ export function PartsPanel({ analysis, onAddPart }: PartsPanelProps): React.Reac
               </div>
               <div className="part-meta">{part.description}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                <span className="pill">{part.simulated ? 'SIMULATED' : 'MECHANICAL'}</span>
+                <span className="pill" title={part.simulated ? 'Runs in the simulator' : part.pins.length ? 'Wired and checked by the circuit check; its behaviour is not simulated yet' : 'Structure only'}>
+                  {part.simulated ? 'SIMULATED' : part.pins.length ? 'WIRING ONLY' : 'MECHANICAL'}
+                </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600 }}>
                   ${part.unitPriceUsd.toFixed(2)} · {part.massGrams}g
                 </span>

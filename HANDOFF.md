@@ -819,6 +819,26 @@ itself). The Display Lab splits GPIO21/22 at two splices; the fault lab feeds th
 `engine/__tests__/pinCapacity.test.ts`. `scripts/checks/wire_overlap.cjs` ignores contact within 3.5 mm of a shared
 soldered end.
 
+### 11.10 Extended parts library (added 2026-11-27)
+35 parts added, all **wiring only** (pins, roles and voltage ratings for the circuit check; no simulated behaviour).
+The equipment list and what is planned: `docs/07_PARTS_LIBRARY.md`; sizes and what is simplified: the "Extended
+library" table in `docs/06_COMPONENT_REFERENCES.md` (not re-checked against sources).
+- `catalog/moduleGeometry.ts`: one place for sizes and pin tips. `ModuleGeom` (board + header rows + pads + holes),
+  `moduleTip` / `modulePadTip`, and tip functions for loose parts (servo adapter, DHT22 feet, PIR right-angle pins,
+  relay and L298N screw terminals, AA leads, rocker tabs, pot feet, N20 tabs, TO-92 / TO-220 feet).
+- `catalog/partsCatalogExtra.ts`: `EXTRA_PARTS`, merged into `PARTS_CATALOG`. `PartSpec.internal` lists pins joined on
+  the board (WS2812 5V/5V_OUT, MAX7219 and DS3231 pass-through, rocker IN/OUT, TP4056 B+/OUT+); `buildNets` unions them.
+  New categories Input and Communication. The parts list badge says SIMULATED / WIRING ONLY / MECHANICAL.
+- Builders: `viewport/parts/{actuators,sensors,sensors2,outputs,inputs,power,controllers,discretes}Extra.ts`, with
+  `moduleKit.ts` (`moduleBoard`: PCB, rings, silk labels, pads, headers on the catalog tips) and `shapes.ts`. New kit
+  packages in `kit/thruhole.ts` (DIP, TO-92, TO-220, screw terminal, JST XH, SRD relay, buzzer, trimmers, RV09 pot,
+  WS2812B, 7-segment, 8x8 matrix, coin cell, patch antenna, finned heatsink) and `soicWide` in `kit/packages.ts`.
+- Budget: the 4 x AA pack counts 2000 mAh; drivers and converters are not counted as loads (`PASS_THROUGH_KINDS`).
+- The Design tab still places only its own add-ons; asked for a servo, GPS, DHT22 and so on, it says they are in the
+  Parts list to add by hand (`offline.ts` MISSING, `designChat.ts` prompt).
+- Checks: `engine/__tests__/partsLibrary.test.ts`; `scripts/checks/part_sheet.cjs <kind...>` takes Iso / Top / close
+  shots of several parts into `part_shots/sheet/`.
+
 ## 12. The reality-gap model and the Twin tab
 
 `TwinFaultConfig` (section 6) is edited in the Twin tab, and by the arena's Real Rover Profile and Ideal Sim buttons.

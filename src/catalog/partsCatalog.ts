@@ -21,6 +21,7 @@ import {
   OLED_096,
   oledPinTip,
 } from './boardGeometry';
+import { EXTRA_PARTS } from './partsCatalogExtra';
 
 export type PinRole =
   | 'power_out'
@@ -64,6 +65,8 @@ export type PartCategory =
   | 'Drivers'
   | 'Sensors'
   | 'Displays'
+  | 'Input'
+  | 'Communication'
   | 'Actuators'
   | 'Power'
   | 'Passives'
@@ -85,6 +88,8 @@ export interface PartSpec {
   defaultColor: string;
   roboforgePartId: string;
   pins: PinSpec[];
+  /** Pins joined inside the part (a closed switch, pass-through headers); GND pins are always joined. */
+  internal?: ReadonlyArray<readonly string[]>;
 }
 
 /**
@@ -170,6 +175,7 @@ function lcdSpec(
 const PCB_T_MM_CAT = 1.6;
 
 export const PARTS_CATALOG: Record<ComponentKind, PartSpec> = {
+  ...EXTRA_PARTS,
   esp32_devkit: {
     kind: 'esp32_devkit',
     name: 'ESP32 DevKit V1',
@@ -680,6 +686,8 @@ export const PART_CATEGORIES: PartCategory[] = [
   'Drivers',
   'Sensors',
   'Displays',
+  'Input',
+  'Communication',
   'Actuators',
   'Power',
   'Passives',

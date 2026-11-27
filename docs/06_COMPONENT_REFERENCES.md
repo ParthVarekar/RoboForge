@@ -47,6 +47,51 @@ Units: millimetres here (datasheet units); the scene uses centimetres. "Source" 
 | FPV antenna + TPU mount | ~6 cm tall | 5V, GND leads | Pagoda antenna photos | Representative |
 | CAD shapes | Your size | — | — | Printed parts show 0.2 mm layer lines; plate is twill carbon; standoff is 5 mm hex aluminium |
 
+## Extended library (added 2026-11-27)
+
+35 parts in `src/catalog/partsCatalogExtra.ts`, their sizes and pin positions in `src/catalog/moduleGeometry.ts`, the
+3D builders in `src/viewport/parts/*Extra*.ts`. All are **wiring only** (see [07_PARTS_LIBRARY.md](07_PARTS_LIBRARY.md)).
+**None of these numbers was re-checked against a datasheet drawing or a photo in this round**: they come from general
+knowledge of the common module layouts and datasheet package sizes. Clone boards vary by a millimetre or two.
+
+| Part | Size used (mm) | Pins / layout | Simplified or inferred |
+| --- | --- | --- | --- |
+| SG90 servo | case 22.4 x 11.8 x 22.7, tabs 32.2 wide | GND (brown), V+ (red), SIG (orange) on a 3-pin header adapter pointing east | Lead shortened; horn drawn along the case |
+| MG996R servo | case 40.7 x 19.7 x 37.2, tabs 54 wide | Same as the SG90 | Brass spline; lead shortened |
+| 28BYJ-48 + ULN2003 board | board 35 x 32; motor 28 mm, ears 42 mm apart | IN1-IN4 (west), - / + (south) | Motor lies north of the board with a short lead into the JST XH socket |
+| N20 gearmotor | 12 x 10 section, 15 mm can, 9.3 mm gearbox, 3 mm shaft | M+, M- solder tabs (east end) | Gear train simplified |
+| Active buzzer (KY-012) | board 18.5 x 15, buzzer 12 x 9.5 | S, +, - (south edge) | |
+| 1-channel relay | board 50 x 26, SRD-05VDC 19 x 15.5 x 15.3 | DC+, DC-, IN (west); NO, COM, NC screw terminal (east) | Driver parts placed from typical layouts |
+| DHT22 / AM2302 | 15.1 x 25 x 7.7 case | VCC, DATA, NC, GND legs bent into feet (south) | Inside of the grille simplified |
+| NEO-6M GPS (GY-NEO6MV2) | board 25 x 35, antenna 25 x 25 x 4 | VCC, RX, TX, GND (south edge) | Antenna lies beside the board on its coax |
+| TCRT5000 line sensor | board 32 x 14, sensor 10.2 x 5.8 x 7 | VCC, GND, DO, AO (west) | |
+| WS2812B stick (8) | board 53 x 10.2, LEDs 5 x 5 at 5.9 mm | GND, DIN, 5V pads (west); GND, DOUT, 5V pads (east) | |
+| L298N | board 43 x 43, heatsink 22 x 22 x 14 | ENA, IN1-IN4, ENB header (south); OUT1/OUT2 west, OUT3/OUT4 east, +12V / GND / +5V south (screw terminals) | ENA/ENB jumpers shown removed; terminal positions moved clear of the corner holes |
+| TB6612FNG breakout | 20.5 x 20.5 | 2 x 8, rows 15.24 apart | SSOP-24 drawn with the TSSOP model |
+| A4988 carrier | 15.24 x 20.32 | 2 x 8, rows 12.7 apart | No heatsink fitted; pin names are under the real board, shown on hover |
+| MT3608 boost | 36 x 17 | VIN+, VIN- pads (west); VOUT+, VOUT- (east) | Shown set to 5.0 V |
+| TP4056 (USB-C, protected) | 28 x 17 | OUT+, B+, B-, OUT- pads (east) | |
+| AMS1117-3.3 module | 22 x 17 | IN, GND, 3V3 (south) | Tantalum capacitors |
+| 4 x AA holder | 62.5 x 57.5 x 15.2 | Red and black leads, tinned ends (south) | Generic NiMH cells |
+| Rocker switch (KCD1) in a printed block | block 26 x 22 x 16, bezel 21 x 15 | Two 4.8 mm tabs (south) | The holder is a printed part, not a product |
+| Arduino Nano (USB-C clone) | 18 x 45 | 2 x 15, rows 15.24 apart | CH340 and regulator are on the underside and not drawn |
+| Raspberry Pi Pico | 21 x 51 | 2 x 20, rows 17.78 apart; castellated edges | Pin names on the underside, shown on hover |
+| HC-05 | base 16 x 37, core module 12.7 x 27 | STATE, RXD, TXD, GND, VCC, EN (south) | |
+| nRF24L01+ | 29 x 15 | 2 x 4 at the west end | Pin names under the real board |
+| DS3231 (ZS-042) | 38 x 22, stands 5 mm up on its coin cell holder | 32K, SQW, SCL, SDA, VCC, GND (west); SCL, SDA, VCC, GND pass-through (east) | Holes moved to x 9 / 29 so the labels stay readable |
+| microSD module | 42 x 24 | GND, VCC, MISO, MOSI, SCK, CS (west) | Socket drawn empty |
+| GY-BME280 (4 pin) | 11.5 x 14 | VIN, GND, SCL, SDA (south) | 3.3 V-only version |
+| GY-VL53L0XV2 | 25 x 10.7 | VIN, GND, SCL, SDA, GPIO1, XSHUT (south) | Protective film left on |
+| HC-SR501 PIR | 32.3 x 24.3, dome 23 x 13 | VCC, OUT, GND right-angle header pointing south under the board | Stands on two nylon spacers; underside parts placed from typical layouts |
+| KY-023 joystick | 34 x 26 | GND, +5V, VRx, VRy, SW (west) | |
+| 10 k pot (9 mm) | 9.7 x 9.7 body, 6 mm shaft | A, W, B legs bent into feet (south) | |
+| TM1637 display | 42 x 24, display 30 x 14 x 7.2 | CLK, DIO, VCC, GND (west) | Driver chip is on the underside, not drawn |
+| MAX7219 matrix | 50 x 32, matrix 32 x 32 x 8 on 8.5 mm sockets | VCC, GND, DIN, CS, CLK (west); outputs (east) | |
+| 1N4007 | DO-41, 5.2 x 2.7 body | A (west), K (east, band) | |
+| 2N2222A | TO-92 | E, B, C feet (south), flat face south | |
+| IRLZ44N | TO-220 | G, D, S feet (south), marked face south | |
+| 100 nF ceramic | 4.2 x 4.6 x 2.6 dipped | Two feet (south), 2.54 mm | |
+
 ## Known differences from the real parts
 
 - Header pins point up on every module so DuPont sockets can be pushed on from above; real modules usually ship with

@@ -194,6 +194,10 @@ function buildNets(project: StudioProject): { nets: NetInfo[]; pinToNet: Map<str
       const curr = gndPins[i];
       if (first && curr) uf.union(first, curr);
     }
+    // pins the part joins itself (a closed switch, a pass-through header)
+    for (const group of spec.internal ?? []) {
+      for (let i = 1; i < group.length; i += 1) uf.union(pinKey({ componentId: comp.id, pinId: group[0]! }), pinKey({ componentId: comp.id, pinId: group[i]! }));
+    }
   }
 
   for (const wire of project.wires) {
@@ -273,6 +277,19 @@ function isPoweredByNet(
   return pNet.voltage >= minV && pNet.voltage <= maxV && !pNet.isGround;
 }
 
+/** Drivers and converters pass their load's current through; counting them as well would count it twice. */
+const PASS_THROUGH_KINDS: ReadonlySet<string> = new Set([
+  'lm2596_buck',
+  'drv8833',
+  'l298n',
+  'tb6612fng',
+  'a4988',
+  'mt3608_boost',
+  'tp4056_charger',
+  'ams1117_3v3',
+  'rocker_switch',
+]);
+
 function computeBudget(project: StudioProject): PowerBudget {
   let totalMassGrams = 0;
   let totalCostUsd = 0;
@@ -295,7 +312,9 @@ function computeBudget(project: StudioProject): PowerBudget {
       batteryCapacityMah += 2200;
     } else if (comp.kind === 'battery_6s_lipo') {
       batteryCapacityMah += 1100;
-    } else if (comp.kind !== 'lm2596_buck' && comp.kind !== 'drv8833') {
+    } else if (comp.kind === 'battery_4aa') {
+      batteryCapacityMah += 2000;
+    } else if (!PASS_THROUGH_KINDS.has(comp.kind)) {
       peakCurrentMa += spec.peakCurrentMa;
     }
   }
